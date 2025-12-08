@@ -1,13 +1,68 @@
-import { autoFixMermaidCode, analyzeCode } from './mermaidAutoFix';
+import { autoFixMermaidCode, analyzeCode, detectSpecialShapes } from './mermaidAutoFix';
+
+/**
+ * Tokens de error relacionados con formas especiales de Mermaid
+ */
+const SPECIAL_SHAPE_TOKENS = [
+    'SQE', 'PE', 'PS', 'STR',
+    'DOUBLECIRCLEEND', 'STADIUMEND', 'SUBROUTINEEND',
+    'PIPE', 'CYLINDEREND', 'DIAMOND_STOP',
+    'TAGEND', 'TRAPEND', 'INVTRAPEND'
+];
+
+/**
+ * Definición de formas especiales para detección
+ */
+const SPECIAL_SHAPES_DETECT = [
+    { openEsc: '\\[\\/', closeEsc: '\\/\\]' },   // trapezoid
+    { openEsc: '\\[\\\\', closeEsc: '\\\\\\]' }, // trapezoid_alt
+    { openEsc: '\\[\\/', closeEsc: '\\\\\\]' },  // parallelogram
+    { openEsc: '\\[\\\\', closeEsc: '\\/\\]' },  // parallelogram_alt
+    { openEsc: '\\(\\[', closeEsc: '\\]\\)' },   // stadium
+    { openEsc: '\\[\\[', closeEsc: '\\]\\]' },   // subroutine
+    { openEsc: '\\[\\(', closeEsc: '\\)\\]' },   // cylindrical
+    { openEsc: '\\(\\(\\(', closeEsc: '\\)\\)\\)' }, // double_circle
+    { openEsc: '\\(\\(', closeEsc: '\\)\\)' },   // circle
+    { openEsc: '\\{\\{', closeEsc: '\\}\\}' },   // hexagon
+];
+
+/**
+ * Verifica si el contenido tiene paréntesis problemáticos fuera de comillas
+ */
+const hasProblematicContent = (content) => {
+    const trimmed = content.trim();
+    if (/^"[^]*"$/.test(trimmed)) return false;
+
+    let inQuotes = false;
+    for (let i = 0; i < content.length; i++) {
+        const char = content[i];
+        if (char === '"' && (i === 0 || content[i - 1] !== '\\')) {
+            inQuotes = !inQuotes;
+        } else if (!inQuotes && (char === '(' || char === ')')) {
+            return true;
+        }
+    }
+    return false;
+};
 
 /**
  * Patrones comunes de errores en Mermaid y sus soluciones
  */
 export const ERROR_PATTERNS = [
     {
-        // Error principal: Paréntesis dentro de nodos o comillas internas
-        pattern: /Expecting.*('SQE'|'PE'|'PS'|'DOUBLECIRCLEEND'|'STADIUMEND'|'STR')|got '(PS|STR)'/i,
+        // Error principal: Paréntesis/comillas en nodos básicos y formas especiales
+        pattern: new RegExp(`Expecting.*(${SPECIAL_SHAPE_TOKENS.map(t => `'${t}'`).join('|')})|got '(PS|STR)'`, 'i'),
         detect: (code) => {
+            // Detectar problemas en formas especiales (trapezoides, stadiums, etc.)
+            for (const shape of SPECIAL_SHAPES_DETECT) {
+                const pattern = new RegExp(`\\w+\\s*${shape.openEsc}([^]*?)${shape.closeEsc}`, 'g');
+                let match;
+                while ((match = pattern.exec(code)) !== null) {
+                    if (hasProblematicContent(match[1])) return true;
+                }
+            }
+
+            // Detectar problemas en nodos básicos
             const nodeRegex = /\w+\s*(?:\[([^\]]+)\]|\{([^\}]+)\}|\(([^\(\)\[\]]+)\))/g;
             let match;
             while ((match = nodeRegex.exec(code)) !== null) {
@@ -28,7 +83,7 @@ export const ERROR_PATTERNS = [
             return false;
         },
         title: "Caracteres especiales en nodos",
-        explanation: "Los paréntesis () o comillas (\") dentro de nodos causan conflicto porque Mermaid los interpreta como sintaxis especial.",
+        explanation: "Los paréntesis () o comillas (\") dentro de nodos (incluyendo trapezoides, stadiums, etc.) causan conflicto porque Mermaid los interpreta como sintaxis especial.",
         suggestion: 'Haz clic en "Auto-Fix" para envolver automáticamente el contenido problemático entre comillas y escapar caracteres.',
         canAutoFix: true
     },
@@ -74,10 +129,27 @@ const findActualErrorLine = (errorMessage, code) => {
         }
     }
 
-    // Método 2: Buscar líneas que tengan el patrón problemático
-    if (/Expecting.*('SQE'|'PE'|'PS'|'STR')|got '(PS|STR)'/.test(errorMessage)) {
+    // Método 2: Buscar líneas que tengan el patrón problemático (incluyendo formas especiales)
+    const tokenPattern = new RegExp(`Expecting.*(${SPECIAL_SHAPE_TOKENS.map(t => `'${t}'`).join('|')})|got '(PS|STR)'`, 'i');
+    if (tokenPattern.test(errorMessage)) {
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
+
+            // Primero verificar formas especiales
+            for (const shape of SPECIAL_SHAPES_DETECT) {
+                const pattern = new RegExp(`\\w+\\s*${shape.openEsc}([^]*?)${shape.closeEsc}`, 'g');
+                let match;
+                while ((match = pattern.exec(line)) !== null) {
+                    if (hasProblematicContent(match[1])) {
+                        return {
+                            lineNumber: i + 1,
+                            lineContent: line
+                        };
+                    }
+                }
+            }
+
+            // Luego verificar nodos básicos
             const nodeRegex = /\w+\s*(?:\[([^\]]+)\]|\{([^\}]+)\}|\(([^\(\)\[\]]+)\))/g;
             let match;
             while ((match = nodeRegex.exec(line)) !== null) {

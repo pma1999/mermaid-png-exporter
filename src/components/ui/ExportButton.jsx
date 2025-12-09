@@ -1,32 +1,38 @@
 /**
- * Botón de exportación con estados de carga y éxito
+ * Botón de exportación con estados de carga y éxito (Responsive)
  * @param {Object} props
  * @param {Function} props.onClick - Handler de click
  * @param {boolean} props.disabled - Estado deshabilitado
  * @param {boolean} props.isExporting - Estado de exportación
  * @param {boolean} props.success - Estado de éxito
+ * @param {boolean} props.fullWidth - Full width mode for mobile
  */
-export function ExportButton({ onClick, disabled, isExporting, success }) {
+export function ExportButton({ onClick, disabled, isExporting, success, fullWidth = false }) {
     const styles = {
         button: {
-            padding: "14px 28px",
-            fontSize: "14px",
-            fontWeight: "600",
-            background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
-            border: "none",
-            borderRadius: "12px",
-            color: "#fff",
-            cursor: disabled ? "not-allowed" : "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: "10px",
-            transition: "all 0.3s ease",
-            boxShadow: disabled ? "none" : "0 4px 20px rgba(99, 102, 241, 0.3)",
+            padding: fullWidth ? '16px 28px' : '14px 28px',
+            fontSize: '14px',
+            fontWeight: '600',
+            background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+            border: 'none',
+            borderRadius: '12px',
+            color: '#fff',
+            cursor: disabled ? 'not-allowed' : 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '10px',
+            transition: 'all 0.3s ease',
+            boxShadow: disabled ? 'none' : '0 4px 20px rgba(99, 102, 241, 0.3)',
             opacity: disabled ? 0.4 : 1,
+            // Full width on mobile
+            width: fullWidth ? '100%' : 'auto',
+            // Ensure touch-friendly size
+            minHeight: '48px',
         },
         buttonSuccess: {
-            background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
-            boxShadow: "0 4px 20px rgba(16, 185, 129, 0.3)",
+            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+            boxShadow: '0 4px 20px rgba(16, 185, 129, 0.3)',
         },
     };
 

@@ -19,12 +19,14 @@ const CheckIcon = () => (
 );
 
 /**
- * Panel de editor con textarea y ejemplos
+ * Panel de editor con textarea y ejemplos (Responsive)
  * @param {Object} props
  * @param {string} props.code - Código actual
  * @param {Function} props.onCodeChange - Handler de cambio de código
+ * @param {boolean} props.isMobile - Is mobile viewport
+ * @param {boolean} props.isTablet - Is tablet viewport
  */
-export function EditorPanel({ code, onCodeChange }) {
+export function EditorPanel({ code, onCodeChange, isMobile = false, isTablet = false }) {
     const [copied, setCopied] = useState(false);
     const { theme, colors } = useTheme();
 
@@ -41,68 +43,89 @@ export function EditorPanel({ code, onCodeChange }) {
     const styles = {
         section: {
             background: colors.bgSecondary,
-            display: "flex",
-            flexDirection: "column",
-            overflow: "hidden",
-            transition: "background 0.3s ease",
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            transition: 'background 0.3s ease',
+            flex: 1,
         },
         header: {
-            padding: "14px 20px",
+            padding: isMobile ? '10px 16px' : isTablet ? '12px 18px' : '14px 20px',
             borderBottom: `1px solid ${colors.borderPrimary}`,
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
             background: colors.bgHover,
-            transition: "background 0.3s ease, border-color 0.3s ease",
+            transition: 'background 0.3s ease, border-color 0.3s ease',
         },
         title: {
-            fontSize: "13px",
-            fontWeight: "600",
+            fontSize: isMobile ? '11px' : '13px',
+            fontWeight: '600',
             color: colors.textSecondary,
-            textTransform: "uppercase",
-            letterSpacing: "0.08em",
-            display: "flex",
-            alignItems: "center",
-            gap: "10px",
+            textTransform: 'uppercase',
+            letterSpacing: '0.08em',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
         },
         examplesBar: {
-            padding: "12px 20px",
-            display: "flex",
-            gap: "8px",
-            flexWrap: "wrap",
+            padding: isMobile ? '8px 16px' : '12px 20px',
+            display: 'flex',
+            gap: '8px',
+            // Mobile: horizontal scroll instead of wrap
+            flexWrap: isMobile ? 'nowrap' : 'wrap',
+            overflowX: isMobile ? 'auto' : 'visible',
+            overflowY: 'hidden',
             borderBottom: `1px solid ${colors.borderPrimary}`,
-            background: theme === 'dark' ? "rgba(0,0,0,0.2)" : "rgba(0,0,0,0.02)",
-            transition: "background 0.3s ease",
+            background: theme === 'dark' ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.02)',
+            transition: 'background 0.3s ease',
+            // Hide scrollbar on mobile for cleaner look
+            msOverflowStyle: 'none',
+            scrollbarWidth: 'none',
+            WebkitOverflowScrolling: 'touch',
         },
         exampleButton: {
-            padding: "6px 12px",
-            fontSize: "12px",
-            fontWeight: "500",
+            padding: isMobile ? '8px 12px' : '6px 12px',
+            fontSize: isMobile ? '11px' : '12px',
+            fontWeight: '500',
             fontFamily: "'JetBrains Mono', monospace",
             background: colors.bgButton,
             border: `1px solid ${colors.borderSecondary}`,
-            borderRadius: "6px",
+            borderRadius: '6px',
             color: colors.textSecondary,
-            cursor: "pointer",
-            transition: "all 0.2s ease",
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+            whiteSpace: 'nowrap',
+            flexShrink: 0,
+            // Ensure touch target size
+            minHeight: isMobile ? '36px' : 'auto',
         },
         textarea: {
             flex: 1,
             background: colors.bgInput,
-            border: "none",
-            padding: "20px",
-            fontSize: "14px",
+            border: 'none',
+            padding: isMobile ? '16px' : '20px',
+            fontSize: isMobile ? '13px' : '14px',
             fontFamily: "'JetBrains Mono', monospace",
             color: colors.textPrimary,
-            resize: "none",
-            lineHeight: "1.7",
-            letterSpacing: "0.01em",
-            transition: "background 0.3s ease, color 0.3s ease",
+            resize: 'none',
+            lineHeight: '1.7',
+            letterSpacing: '0.01em',
+            transition: 'background 0.3s ease, color 0.3s ease',
         },
     };
 
+    // Hide scrollbar style for examples bar
+    const hideScrollbarCSS = isMobile ? `
+        .examples-bar::-webkit-scrollbar {
+            display: none;
+        }
+    ` : '';
+
     return (
         <section style={styles.section}>
+            {hideScrollbarCSS && <style>{hideScrollbarCSS}</style>}
+
             <div style={styles.header}>
                 <span style={styles.title}>Código Mermaid</span>
                 <IconButton
@@ -113,7 +136,7 @@ export function EditorPanel({ code, onCodeChange }) {
             </div>
 
             {/* Examples Bar */}
-            <div style={styles.examplesBar}>
+            <div style={styles.examplesBar} className="examples-bar">
                 {DIAGRAM_TYPES.map((type) => (
                     <button
                         key={type}

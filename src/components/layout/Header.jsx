@@ -2,9 +2,9 @@ import { useTheme } from '../../hooks/useTheme';
 import { ThemeToggle } from '../ui';
 
 // Logo SVG como componente
-function Logo() {
+function Logo({ size = 32 }) {
     return (
-        <svg width="32" height="32" viewBox="0 0 32 32" fill="none" style={{ flexShrink: 0 }}>
+        <svg width={size} height={size} viewBox="0 0 32 32" fill="none" style={{ flexShrink: 0 }}>
             <rect width="32" height="32" rx="8" fill="url(#mermaidLogoGrad)" />
             <path
                 d="M8 12L16 8L24 12L16 16L8 12Z"
@@ -34,46 +34,54 @@ function Logo() {
 }
 
 /**
- * Componente de cabecera de la aplicación
+ * Componente de cabecera de la aplicación (Responsive)
+ * @param {Object} props
+ * @param {boolean} props.isMobile - Is mobile viewport
+ * @param {boolean} props.isTablet - Is tablet viewport
  */
-export function Header() {
+export function Header({ isMobile = false, isTablet = false }) {
     const { theme, colors } = useTheme();
 
+    // Responsive styles
     const styles = {
         header: {
-            padding: "20px 32px",
+            padding: isMobile ? '12px 16px' : isTablet ? '16px 24px' : '20px 32px',
             borderBottom: `1px solid ${colors.borderPrimary}`,
             background: colors.bgElevated,
-            backdropFilter: "blur(20px)",
-            transition: "background 0.3s ease, border-color 0.3s ease",
+            backdropFilter: 'blur(20px)',
+            transition: 'background 0.3s ease, border-color 0.3s ease',
         },
         content: {
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            maxWidth: "1800px",
-            margin: "0 auto",
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            maxWidth: '1800px',
+            margin: '0 auto',
+            gap: isMobile ? '8px' : '16px',
         },
         logo: {
-            display: "flex",
-            alignItems: "center",
-            gap: "14px",
+            display: 'flex',
+            alignItems: 'center',
+            gap: isMobile ? '10px' : '14px',
         },
         title: {
-            fontSize: "22px",
-            fontWeight: "600",
+            fontSize: isMobile ? '18px' : isTablet ? '20px' : '22px',
+            fontWeight: '600',
             color: theme === 'dark' ? '#ffffff' : '#6366f1',
-            letterSpacing: "-0.02em",
+            letterSpacing: '-0.02em',
+            whiteSpace: 'nowrap',
         },
         rightSection: {
-            display: "flex",
-            alignItems: "center",
-            gap: "16px",
+            display: 'flex',
+            alignItems: 'center',
+            gap: isMobile ? '8px' : '16px',
         },
         subtitle: {
-            fontSize: "13px",
+            fontSize: '13px',
             color: colors.textMuted,
-            fontWeight: "500",
+            fontWeight: '500',
+            // Hide on mobile to save space
+            display: isMobile ? 'none' : 'block',
         },
     };
 
@@ -81,12 +89,12 @@ export function Header() {
         <header style={styles.header}>
             <div style={styles.content}>
                 <div style={styles.logo}>
-                    <Logo />
+                    <Logo size={isMobile ? 28 : 32} />
                     <h1 style={styles.title}>Mermaid → PNG</h1>
                 </div>
 
                 <div style={styles.rightSection}>
-                    <ThemeToggle />
+                    <ThemeToggle isMobile={isMobile} />
                     <p style={styles.subtitle}>Exportador de alta calidad</p>
                 </div>
             </div>

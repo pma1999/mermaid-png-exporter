@@ -2,7 +2,7 @@ import { useTheme } from '../../hooks/useTheme';
 import { ScaleSelector, TransparentToggle, ExportButton } from '../ui';
 
 /**
- * Componente de pie de página con controles de exportación
+ * Componente de pie de página con controles de exportación (Responsive)
  * @param {Object} props
  * @param {number} props.exportScale - Escala de exportación
  * @param {Function} props.onScaleChange - Handler de cambio de escala
@@ -12,6 +12,8 @@ import { ScaleSelector, TransparentToggle, ExportButton } from '../ui';
  * @param {boolean} props.isExporting - Estado de exportación
  * @param {boolean} props.exportSuccess - Estado de éxito
  * @param {boolean} props.canExport - Si se puede exportar
+ * @param {boolean} props.isMobile - Is mobile viewport
+ * @param {boolean} props.isTablet - Is tablet viewport
  */
 export function Footer({
     exportScale,
@@ -22,30 +24,36 @@ export function Footer({
     isExporting,
     exportSuccess,
     canExport,
+    isMobile = false,
+    isTablet = false,
 }) {
     const { colors } = useTheme();
 
+    // Mobile layout: stacked with full-width export button
     const styles = {
         footer: {
-            padding: "16px 32px",
+            padding: isMobile ? '12px 16px' : isTablet ? '14px 24px' : '16px 32px',
             borderTop: `1px solid ${colors.borderPrimary}`,
             background: colors.bgFooter,
-            backdropFilter: "blur(20px)",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: "24px",
-            transition: "background 0.3s ease, border-color 0.3s ease",
+            backdropFilter: 'blur(20px)',
+            display: 'flex',
+            flexDirection: isMobile ? 'column' : 'row',
+            justifyContent: 'space-between',
+            alignItems: isMobile ? 'stretch' : 'center',
+            gap: isMobile ? '12px' : '24px',
+            transition: 'background 0.3s ease, border-color 0.3s ease',
         },
         options: {
-            display: "flex",
-            alignItems: "center",
-            gap: "32px",
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: isMobile ? 'space-between' : 'flex-start',
+            gap: isMobile ? '16px' : isTablet ? '24px' : '32px',
+            flexWrap: isMobile ? 'nowrap' : 'wrap',
         },
         optionGroup: {
-            display: "flex",
-            alignItems: "center",
-            gap: "12px",
+            display: 'flex',
+            alignItems: 'center',
+            gap: isMobile ? '8px' : '12px',
         },
     };
 
@@ -53,11 +61,19 @@ export function Footer({
         <footer style={styles.footer}>
             <div style={styles.options}>
                 <div style={styles.optionGroup}>
-                    <ScaleSelector value={exportScale} onChange={onScaleChange} />
+                    <ScaleSelector
+                        value={exportScale}
+                        onChange={onScaleChange}
+                        isMobile={isMobile}
+                    />
                 </div>
 
                 <div style={styles.optionGroup}>
-                    <TransparentToggle value={bgTransparent} onChange={onTransparentChange} />
+                    <TransparentToggle
+                        value={bgTransparent}
+                        onChange={onTransparentChange}
+                        isMobile={isMobile}
+                    />
                 </div>
             </div>
 
@@ -66,6 +82,7 @@ export function Footer({
                 disabled={!canExport}
                 isExporting={isExporting}
                 success={exportSuccess}
+                fullWidth={isMobile}
             />
         </footer>
     );

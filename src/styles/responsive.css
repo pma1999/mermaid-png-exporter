@@ -1,0 +1,228 @@
+/**
+ * Responsive Design System
+ * Mobile-first approach with progressive enhancement
+ * 
+ * Breakpoints:
+ * - Mobile: ≤768px
+ * - Tablet: 769px - 1024px  
+ * - Desktop: >1024px
+ */
+
+/* ========================================
+   CSS Custom Properties (Responsive)
+   ======================================== */
+
+:root {
+    /* Touch-friendly minimum sizes (iOS/Android guidelines) */
+    --touch-target-min: 44px;
+    --touch-target-comfortable: 48px;
+
+    /* Responsive spacing scale */
+    --spacing-xs: 4px;
+    --spacing-sm: 8px;
+    --spacing-md: 12px;
+    --spacing-lg: 16px;
+    --spacing-xl: 24px;
+    --spacing-2xl: 32px;
+
+    /* Responsive typography */
+    --font-size-xs: 11px;
+    --font-size-sm: 12px;
+    --font-size-base: 14px;
+    --font-size-lg: 16px;
+    --font-size-xl: 18px;
+    --font-size-2xl: 22px;
+
+    /* Container padding */
+    --container-padding: 32px;
+    --header-padding: 20px 32px;
+    --footer-padding: 16px 32px;
+    --panel-padding: 20px;
+}
+
+/* Tablet adjustments (769px - 1024px) */
+@media (max-width: 1024px) {
+    :root {
+        --container-padding: 24px;
+        --header-padding: 16px 24px;
+        --footer-padding: 14px 24px;
+        --panel-padding: 16px;
+    }
+}
+
+/* Mobile adjustments (≤768px) */
+@media (max-width: 768px) {
+    :root {
+        --container-padding: 16px;
+        --header-padding: 12px 16px;
+        --footer-padding: 12px 16px;
+        --panel-padding: 12px;
+
+        /* Slightly larger touch targets on mobile */
+        --touch-target-min: 44px;
+
+        /* Adjusted font sizes for mobile */
+        --font-size-xs: 10px;
+        --font-size-sm: 11px;
+        --font-size-base: 13px;
+        --font-size-lg: 15px;
+        --font-size-xl: 17px;
+        --font-size-2xl: 20px;
+    }
+}
+
+/* ========================================
+   Global Mobile Optimizations
+   ======================================== */
+
+/* Prevent text size adjustment on orientation change */
+html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+}
+
+/* Smooth scrolling but respect reduced motion preferences */
+@media (prefers-reduced-motion: no-preference) {
+    html {
+        scroll-behavior: smooth;
+    }
+}
+
+/* Better touch behavior */
+* {
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* Ensure buttons and inputs are touch-friendly */
+button,
+input,
+select,
+textarea {
+    touch-action: manipulation;
+}
+
+/* ========================================
+   Mobile Tab Bar Styles
+   ======================================== */
+
+.mobile-tab-bar {
+    display: flex;
+    background: var(--bg-secondary, rgba(255, 255, 255, 0.05));
+    border-bottom: 1px solid var(--border-primary, rgba(255, 255, 255, 0.06));
+    padding: 0;
+    gap: 0;
+}
+
+.mobile-tab-bar button {
+    flex: 1;
+    padding: 14px 16px;
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: var(--touch-target-min);
+}
+
+.mobile-tab-bar button:hover {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.mobile-tab-bar button.active {
+    border-bottom-color: #6366f1;
+    color: #6366f1;
+}
+
+.mobile-tab-bar button svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* ========================================
+   Scrollbar Mobile Optimizations
+   ======================================== */
+
+@media (max-width: 768px) {
+    ::-webkit-scrollbar {
+        width: 4px;
+        height: 4px;
+    }
+
+    /* Hide scrollbars on touch devices where native scrolling is better */
+    @media (pointer: coarse) {
+        ::-webkit-scrollbar {
+            width: 0;
+            height: 0;
+        }
+    }
+}
+
+/* ========================================
+   Utility Classes
+   ======================================== */
+
+/* Hide on specific breakpoints */
+@media (max-width: 768px) {
+    .hide-mobile {
+        display: none !important;
+    }
+}
+
+@media (min-width: 769px) and (max-width: 1024px) {
+    .hide-tablet {
+        display: none !important;
+    }
+}
+
+@media (min-width: 1025px) {
+    .hide-desktop {
+        display: none !important;
+    }
+}
+
+/* Show only on specific breakpoints */
+.show-mobile-only {
+    display: none !important;
+}
+
+@media (max-width: 768px) {
+    .show-mobile-only {
+        display: flex !important;
+    }
+}
+
+/* Full width on mobile */
+@media (max-width: 768px) {
+    .full-width-mobile {
+        width: 100% !important;
+    }
+}
+
+/* ========================================
+   Touch-friendly Component Overrides
+   ======================================== */
+
+@media (max-width: 768px) {
+
+    /* Ensure all interactive elements meet touch target size */
+    button:not(.no-touch-resize),
+    [role="button"]:not(.no-touch-resize) {
+        min-height: var(--touch-target-min);
+        min-width: var(--touch-target-min);
+    }
+
+    /* Larger checkbox/radio targets */
+    input[type="checkbox"],
+    input[type="radio"] {
+        width: 20px;
+        height: 20px;
+    }
+}

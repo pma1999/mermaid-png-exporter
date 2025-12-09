@@ -1,37 +1,46 @@
 import { useTheme } from '../../hooks/useTheme';
 
 /**
- * Toggle de fondo transparente
+ * Toggle de fondo transparente (Responsive)
  * @param {Object} props
  * @param {boolean} props.value - Estado actual
  * @param {Function} props.onChange - Handler de cambio
+ * @param {boolean} props.isMobile - Is mobile viewport
  */
-export function TransparentToggle({ value, onChange }) {
+export function TransparentToggle({ value, onChange, isMobile = false }) {
     const { colors, isDark } = useTheme();
 
     const styles = {
         label: {
-            display: "flex",
-            alignItems: "center",
-            gap: "10px",
-            fontSize: "13px",
+            display: 'flex',
+            alignItems: 'center',
+            gap: isMobile ? '8px' : '10px',
+            fontSize: isMobile ? '12px' : '13px',
             color: colors.textSecondary,
-            cursor: "pointer",
-            fontWeight: "500",
+            cursor: 'pointer',
+            fontWeight: '500',
+            // Ensure touch-friendly size
+            minHeight: '44px',
+            padding: '0 4px',
         },
         checkbox: {
-            display: "none",
+            display: 'none',
         },
         customCheckbox: {
-            width: "20px",
-            height: "20px",
-            borderRadius: "6px",
+            width: isMobile ? '22px' : '20px',
+            height: isMobile ? '22px' : '20px',
+            borderRadius: '6px',
             border: `2px solid ${colors.borderInput}`,
             background: colors.bgButton,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            transition: "all 0.2s ease",
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: 'all 0.2s ease',
+            flexShrink: 0,
+        },
+        text: {
+            // Shorter text on mobile
+            whiteSpace: 'nowrap',
         },
     };
 
@@ -50,7 +59,7 @@ export function TransparentToggle({ value, onChange }) {
                     </svg>
                 )}
             </span>
-            Fondo transparente
+            <span style={styles.text}>{isMobile ? 'Transp.' : 'Fondo transparente'}</span>
         </label>
     );
 }

@@ -1,27 +1,35 @@
 import { useTheme } from '../../hooks/useTheme';
 
 /**
- * Botón de toggle para cambiar entre tema oscuro y claro
+ * Botón de toggle para cambiar entre tema oscuro y claro (Responsive)
+ * @param {Object} props
+ * @param {boolean} props.isMobile - Is mobile viewport
  */
-export function ThemeToggle() {
+export function ThemeToggle({ isMobile = false }) {
     const { theme, toggleTheme, colors } = useTheme();
 
     const styles = {
         button: {
-            display: "flex",
-            alignItems: "center",
-            gap: "12px",
+            display: 'flex',
+            alignItems: 'center',
+            gap: isMobile ? '0' : '12px',
             background: colors.bgButton,
             border: `1px solid ${colors.borderSecondary}`,
-            borderRadius: "12px",
-            padding: "8px 14px",
-            cursor: "pointer",
-            transition: "all 0.3s ease",
+            borderRadius: isMobile ? '10px' : '12px',
+            padding: isMobile ? '10px' : '8px 14px',
+            cursor: 'pointer',
+            transition: 'all 0.3s ease',
             color: colors.textSecondary,
+            // Ensure touch-friendly size
+            minWidth: isMobile ? '44px' : 'auto',
+            minHeight: isMobile ? '44px' : 'auto',
+            justifyContent: 'center',
         },
         label: {
-            fontSize: "13px",
-            fontWeight: "500",
+            fontSize: '13px',
+            fontWeight: '500',
+            // Hide label on mobile (icon only)
+            display: isMobile ? 'none' : 'inline',
         },
     };
 

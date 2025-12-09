@@ -30,9 +30,17 @@ export function Footer({
     const { colors } = useTheme();
 
     // Mobile layout: stacked with full-width export button
+    // Calculate safe padding for devices with gesture navigation (notch, home indicator)
+    const safeAreaBottom = 'env(safe-area-inset-bottom, 0px)';
+
     const styles = {
         footer: {
-            padding: isMobile ? '12px 16px' : isTablet ? '14px 24px' : '16px 32px',
+            // Base padding + safe area for gesture navigation devices
+            padding: isMobile
+                ? `12px 16px calc(12px + ${safeAreaBottom})`
+                : isTablet
+                    ? `14px 24px calc(14px + ${safeAreaBottom})`
+                    : `16px 32px calc(16px + ${safeAreaBottom})`,
             borderTop: `1px solid ${colors.borderPrimary}`,
             background: colors.bgFooter,
             backdropFilter: 'blur(20px)',
@@ -42,6 +50,8 @@ export function Footer({
             alignItems: isMobile ? 'stretch' : 'center',
             gap: isMobile ? '12px' : '24px',
             transition: 'background 0.3s ease, border-color 0.3s ease',
+            // Ensure footer doesn't shrink
+            flexShrink: 0,
         },
         options: {
             display: 'flex',
@@ -58,7 +68,7 @@ export function Footer({
     };
 
     return (
-        <footer style={styles.footer}>
+        <footer className="app-footer" style={styles.footer}>
             <div style={styles.options}>
                 <div style={styles.optionGroup}>
                     <ScaleSelector

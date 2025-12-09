@@ -31,6 +31,8 @@ export function PreviewPanel({
             overflow: 'hidden',
             transition: 'background 0.3s ease',
             flex: 1,
+            // Critical: allows flex item to shrink below content size
+            minHeight: 0,
         },
         header: {
             padding: isMobile ? '10px 16px' : isTablet ? '12px 18px' : '14px 20px',
@@ -79,6 +81,8 @@ export function PreviewPanel({
             WebkitOverflowScrolling: 'touch',
             // Enable pinch-to-zoom on touch devices
             touchAction: 'pan-x pan-y pinch-zoom',
+            // Critical: allows flex item to shrink below content size
+            minHeight: 0,
         },
         preview: {
             maxWidth: '100%',

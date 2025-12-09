@@ -8,9 +8,20 @@
   padding: 0;
 }
 
+/* Enable safe-area-inset support */
+html {
+  /* Ensure viewport-fit=cover works */
+  height: 100%;
+  height: -webkit-fill-available;
+}
+
 body {
   overflow: hidden;
   transition: background 0.3s ease;
+  /* Use dynamic viewport height with fallbacks */
+  min-height: 100vh;
+  min-height: 100dvh;
+  min-height: -webkit-fill-available;
 }
 
 /* Focus states */

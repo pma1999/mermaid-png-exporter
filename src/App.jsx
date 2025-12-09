@@ -132,47 +132,56 @@ export default function App() {
 
   // Responsive styles
   const getMainStyles = () => {
+    // Base styles for all layouts - minHeight: 0 is critical for flex shrinking
+    const baseStyles = {
+      flex: 1,
+      overflow: 'hidden',
+      animation: 'fadeIn 0.5s ease-out',
+      // Critical: allows flex item to shrink below content size
+      minHeight: 0,
+    };
+
     // Mobile: Single panel (tab-based)
     if (isMobile) {
       return {
-        flex: 1,
+        ...baseStyles,
         display: 'flex',
         flexDirection: 'column',
-        overflow: 'hidden',
-        animation: 'fadeIn 0.5s ease-out',
       };
     }
 
     // Tablet: Stacked vertical
     if (isTablet) {
       return {
-        flex: 1,
+        ...baseStyles,
         display: 'grid',
         gridTemplateRows: '1fr 1fr',
         gap: '1px',
         background: colors.borderPrimary,
-        overflow: 'hidden',
-        animation: 'fadeIn 0.5s ease-out',
       };
     }
 
     // Desktop: Side by side
     return {
-      flex: 1,
+      ...baseStyles,
       display: 'grid',
       gridTemplateColumns: '1fr 1fr',
       gap: '1px',
       background: colors.borderPrimary,
-      overflow: 'hidden',
-      animation: 'fadeIn 0.5s ease-out',
     };
   };
 
   // Container styles
   const styles = {
     container: {
+      // Use dvh (dynamic viewport height) with fallbacks for maximum compatibility
+      // This handles mobile browser chrome (address bar) correctly
       minHeight: '100vh',
       height: '100vh',
+      // Modern browsers: use dynamic viewport height
+      ...(typeof CSS !== 'undefined' && CSS.supports && CSS.supports('height', '100dvh')
+        ? { height: '100dvh', minHeight: '100dvh' }
+        : {}),
       maxHeight: '-webkit-fill-available', // iOS Safari fix
       background: theme === 'dark'
         ? `linear-gradient(135deg, ${colors.bgPrimary} 0%, #13131a 50%, ${colors.bgPrimary} 100%)`
@@ -190,6 +199,8 @@ export default function App() {
       display: 'flex',
       flexDirection: 'column',
       overflow: 'hidden',
+      // Ensure content can shrink to make room for footer
+      minHeight: 0,
     },
   };
 
@@ -233,6 +244,8 @@ export default function App() {
             flexDirection: 'column',
             flex: 1,
             overflow: 'hidden',
+            // Critical: allows flex item to shrink below content size
+            minHeight: 0,
           }}
         >
           <EditorPanel
@@ -248,6 +261,8 @@ export default function App() {
             flexDirection: 'column',
             flex: 1,
             overflow: 'hidden',
+            // Critical: allows flex item to shrink below content size
+            minHeight: 0,
           }}
         >
           <PreviewPanel
@@ -285,7 +300,7 @@ export default function App() {
   );
 
   return (
-    <div style={styles.container}>
+    <div className="app-container" style={styles.container}>
       <style>{dynamicCSS}</style>
 
       <Header isMobile={isMobile} isTablet={isTablet} />

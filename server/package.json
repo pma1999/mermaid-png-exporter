@@ -1,0 +1,22 @@
+{
+    "name": "mermaid-exporter-server",
+    "version": "1.0.0",
+    "description": "Servidor embebido para Mermaid PNG Exporter",
+    "main": "index.js",
+    "bin": "index.js",
+    "scripts": {
+        "start": "node index.js"
+    },
+    "pkg": {
+        "assets": [
+            "dist/**/*"
+        ],
+        "targets": [
+            "node18-win-x64"
+        ],
+        "outputPath": "../release"
+    },
+    "dependencies": {
+        "express": "^4.21.1"
+    }
+}

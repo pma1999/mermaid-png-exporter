@@ -1,5 +1,5 @@
 /**
- * Sistema de Auto-corrección de código Mermaid v2
+ * Sistema de Auto-corrección de código Mermaid v2.1
  * 
  * PRINCIPIO FUNDAMENTAL: "First, do no harm"
  * - Solo modificar nodos que CLARAMENTE tienen problemas
@@ -9,6 +9,8 @@
  * Soporta todas las formas de nodos de Mermaid:
  * - Básicas: [], {}, ()
  * - Especiales: [/  /], [\  \], ([  ]), [[  ]], [(  )], ((  )), (((  ))), {{  }}
+ * 
+ * v2.1 - Fix para subgraph titles con paréntesis
  */
 
 // =============================================================================
@@ -162,6 +164,55 @@ const fixSpecialNode = (nodeId, content, openDelim, closeDelim, modifier = '') =
 };
 
 // =============================================================================
+// FIX PARA SUBGRAPH TITLES
+// =============================================================================
+
+/**
+ * Corrige títulos de subgraph que contienen paréntesis
+ * 
+ * Sintaxis de subgraph:
+ *   subgraph ID [título con texto]
+ *   subgraph ID ["título ya entrecomillado"]
+ * 
+ * Si el título contiene paréntesis sin entrecomillar, se deben entrecomillar
+ * 
+ * @param {string} line - Línea que contiene declaración de subgraph
+ * @returns {{fixed: string, wasModified: boolean, original: string, fixedTitle: string}}
+ */
+const fixSubgraphTitle = (line) => {
+    // Regex para capturar subgraph: subgraph ID [título]
+    // El título es opcional, puede no existir
+    const subgraphWithTitleRegex = /^(\s*subgraph\s+)(\w+)\s*\[([^\]]+)\]/;
+    const match = line.match(subgraphWithTitleRegex);
+    
+    if (!match) {
+        // No hay título entre corchetes, o no es un subgraph válido
+        return { fixed: line, wasModified: false, original: '', fixedTitle: '' };
+    }
+    
+    const [fullMatch, prefix, id, title] = match;
+    
+    // Si el título ya está entrecomillado, no hacer nada
+    if (isFullyQuoted(title.trim())) {
+        return { fixed: line, wasModified: false, original: '', fixedTitle: '' };
+    }
+    
+    // Si el título tiene paréntesis sin entrecomillar, corregir
+    if (hasUnquotedParentheses(title)) {
+        const quotedTitle = safeQuote(title);
+        const fixedLine = line.replace(fullMatch, `${prefix}${id} [${quotedTitle}]`);
+        return { 
+            fixed: fixedLine, 
+            wasModified: true, 
+            original: title,
+            fixedTitle: quotedTitle
+        };
+    }
+    
+    return { fixed: line, wasModified: false, original: '', fixedTitle: '' };
+};
+
+// =============================================================================
 // PARSER DE NODOS MEJORADO
 // =============================================================================
 
@@ -203,8 +254,8 @@ const parseAndFixNodes = (line) => {
     for (const shape of shapePatterns) {
         // Crear regex para esta forma específica
         // Captura: ID + delimitador apertura + contenido + delimitador cierre + opcional :::clase
-        const openEsc = shape.open.replace(/([\/\\()\[\]{}])/g, '\\$1');
-        const closeEsc = shape.close.replace(/([\/\\()\[\]{}])/g, '\\$1');
+        const openEsc = shape.open.replace(/([\\/\\()[\]{}])/g, '\\$1');
+        const closeEsc = shape.close.replace(/([\\/\\()[\]{}])/g, '\\$1');
 
         // Usar regex non-greedy pero con restricción de no capturar el cierre
         const regex = new RegExp(
@@ -385,10 +436,25 @@ export const autoFixMermaidCode = (code) => {
             /^\s*sequenceDiagram/.test(line) || // Diagrama de secuencia
             /^\s*end\s*$/.test(line) ||      // Cierre de subgraph
             /^\s*direction\s/.test(line) ||  // Dirección
-            /^\s*subgraph\s/.test(line) ||   // Inicio de subgraph
             /^\s*$/.test(line)               // Líneas vacías
         ) {
             return line;
+        }
+
+        // FIX ESPECIAL: Subgraph titles con paréntesis
+        // Sintaxis: subgraph ID [título que puede tener (paréntesis)]
+        // Los paréntesis en títulos de subgraph causan parse errors
+        if (/^\s*subgraph\s/.test(line)) {
+            const result = fixSubgraphTitle(line);
+            if (result.wasModified) {
+                allFixes.push({
+                    line: index + 1,
+                    original: `subgraph title: ${result.original}`,
+                    fixed: `subgraph title: ${result.fixedTitle}`
+                });
+                return result.fixed;
+            }
+            return line; // Subgraph sin problemas
         }
 
         // FIX ESPECIAL: Bug conocido de Mermaid con linkStyle y colores hex
@@ -464,9 +530,22 @@ export const analyzeCode = (code) => {
             /^\s*classDef\s/.test(line) ||
             /^\s*class\s/.test(line) ||
             /^\s*style\s/.test(line) ||
-            /^\s*subgraph\s/.test(line) ||
             /^\s*$/.test(line)
         ) {
+            return;
+        }
+
+        // Detectar problemas en subgraph titles
+        if (/^\s*subgraph\s/.test(line)) {
+            const result = fixSubgraphTitle(line);
+            if (result.wasModified) {
+                issues.push({
+                    line: index + 1,
+                    type: 'unquoted_subgraph_title',
+                    content: result.original,
+                    description: 'Título de subgraph con paréntesis sin entrecomillar'
+                });
+            }
             return;
         }
 

@@ -2,37 +2,44 @@
 
 Exportador de diagramas Mermaid a PNG de alta calidad.
 
-## Instalación rápida (Windows)
+## 🚀 Uso rápido
 
-1. **Requisito**: Tener Node.js instalado
-   - Si no lo tienes: descárgalo de https://nodejs.org (versión LTS)
-   - Instálalo con las opciones por defecto
+### Opción 1: Ejecutable (Recomendado)
 
-2. **Ejecutar**: Haz doble clic en `INSTALAR.bat`
-   - Instalará las dependencias automáticamente
-   - Abrirá la aplicación en tu navegador
+Haz doble clic en **`release/MermaidExporter.exe`**
 
-## Uso posterior
+- No requiere instalación
+- Se abre automáticamente en tu navegador
+- Funciona sin conexión a internet
 
-Una vez instalado, puedes iniciar la app de dos formas:
+### Opción 2: Desarrollo
 
-### Opción A: Doble clic en `INSTALAR.bat`
-Funciona siempre, detecta si ya está instalado.
-
-### Opción B: Desde terminal
 ```bash
+npm install
 npm run dev
 ```
 
-## Funcionalidades
+## 📦 Crear ejecutable
+
+Para regenerar el ejecutable después de hacer cambios:
+
+```powershell
+.\build-exe.ps1
+```
+
+Esto generará `release/MermaidExporter.exe` (~38 MB).
+
+## ✨ Funcionalidades
 
 - ✨ Renderizado en tiempo real
 - 📥 Exportación PNG en escalas 1x, 2x, 3x, 4x
 - 🎨 Opción de fondo transparente
 - 📋 8 plantillas de ejemplo incluidas
 - 🔄 Validación de sintaxis Mermaid
+- 📴 Funciona offline (PWA)
+- 💻 Instalable como app de escritorio desde el navegador
 
-## Tipos de diagramas soportados
+## 📊 Tipos de diagramas soportados
 
 - Flowchart
 - Sequence Diagram
@@ -42,6 +49,19 @@ npm run dev
 - Gantt Chart
 - Pie Chart
 - Mind Map
+
+## 🛠️ Estructura del proyecto
+
+```
+mermaid-png-exporter/
+├── src/                    # Código fuente React
+├── public/                 # Iconos PWA
+├── server/                 # Servidor embebido para el .exe
+├── release/                # Ejecutables generados
+│   └── MermaidExporter.exe
+├── build-exe.ps1          # Script para crear el ejecutable
+└── vite.config.js         # Configuración PWA
+```
 
 ---
 

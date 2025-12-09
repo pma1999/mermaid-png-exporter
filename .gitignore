@@ -103,4 +103,9 @@ coverage/
 .vercel
 .netlify
 
+# Ejecutable / Release
+release/
+server/dist/
+server/node_modules/
+
 

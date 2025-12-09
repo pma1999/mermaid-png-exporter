@@ -1,0 +1,81 @@
+================================================================================
+TEST: Subgraph title fix for Mermaid autofix
+================================================================================
+
+­ƒôï AN├üLISIS DEL C├ôDIGO ORIGINAL:
+   Problemas detectados: 12
+   1. L├¡nea 6: unquoted_subgraph_title
+      "1. ┬┐C├ôMO EXISTE LA COSA? (Ontolog├¡a)"
+   2. L├¡nea 8: unquoted_special_chars
+      "SIMPLE[<b>COSA SIMPLE</b><br/>Unidad natural/artificial<br/><i>(Ej. Caballo, Libro)</i>]"
+   3. L├¡nea 9: unquoted_special_chars
+      "COMP[<b>COSA COMPUESTA</b><br/>Uni├│n de cosas con<br/>individualidad previa<br/><i>(Ej. Edificio, Coche)</i>]"
+   4. L├¡nea 15: unquoted_special_chars
+      "VENTA[<b>VENTA + REPARTO $</b><br/>(Art 404 CC)]"
+   5. L├¡nea 19: unquoted_subgraph_title
+      "2. ┬┐C├ôMO SE AGRUPAN? (Universalidades)"
+   6. L├¡nea 23: unquoted_special_chars
+      "FACTI[<b>De Hecho</b><br/>Voluntad del due├▒o<br/><i>(Biblioteca, Reba├▒o)</i>]"
+   7. L├¡nea 24: unquoted_special_chars
+      "IURIS[<b>De Derecho</b><br/>Por Ley - Activo+Pasivo<br/><i>(Herencia - Art 659)</i>]"
+   8. L├¡nea 28: unquoted_subgraph_title
+      "3. JERARQU├ìA Y CONEXI├ôN (La relaci├│n)"
+   9. L├¡nea 45: unquoted_special_chars
+      "INT[<b>PARTES INTEGRANTES</b><br/>Inmuebles por incorporaci├│n<br/>(Ladrillos)]"
+   10. L├¡nea 48: unquoted_special_chars
+      "PERT[<b>PERTENENCIAS</b><br/>Inmuebles por destino<br/>(Tractor en finca)]"
+   11. L├¡nea 49: unquoted_special_chars
+      "DEST[Acto de Destinaci├│n<br/>(Voluntad del due├▒o)]"
+   12. L├¡nea 50: unquoted_special_chars
+      "RULE[<b>ACCESORIO SIGUE A PRINCIPAL</b><br/>Venta finca = Venta tractor<br/>(Arts. 883, 1097)]"
+
+­ƒöº APLICANDO CORRECCIONES:
+   Cambios realizados: 12
+   1. L├¡nea 6:
+      Original: subgraph title: 1. ┬┐C├ôMO EXISTE LA COSA? (Ontolog├¡a)
+      Corregido: subgraph title: "1. ┬┐C├ôMO EXISTE LA COSA? (Ontolog├¡a)"
+   2. L├¡nea 8:
+      Original: SIMPLE[<b>COSA SIMPLE</b><br/>Unidad natural/artificial<br/><i>(Ej. Caballo, Libro)</i>]
+      Corregido: SIMPLE["<b>COSA SIMPLE</b><br/>Unidad natural/artificial<br/><i>(Ej. Caballo, Libro)</i>"]
+   3. L├¡nea 9:
+      Original: COMP[<b>COSA COMPUESTA</b><br/>Uni├│n de cosas con<br/>individualidad previa<br/><i>(Ej. Edificio, Coche)</i>]
+      Corregido: COMP["<b>COSA COMPUESTA</b><br/>Uni├│n de cosas con<br/>individualidad previa<br/><i>(Ej. Edificio, Coche)</i>"]
+   4. L├¡nea 15:
+      Original: VENTA[<b>VENTA + REPARTO $</b><br/>(Art 404 CC)]
+      Corregido: VENTA["<b>VENTA + REPARTO $</b><br/>(Art 404 CC)"]
+   5. L├¡nea 19:
+      Original: subgraph title: 2. ┬┐C├ôMO SE AGRUPAN? (Universalidades)
+      Corregido: subgraph title: "2. ┬┐C├ôMO SE AGRUPAN? (Universalidades)"
+   6. L├¡nea 23:
+      Original: FACTI[<b>De Hecho</b><br/>Voluntad del due├▒o<br/><i>(Biblioteca, Reba├▒o)</i>]
+      Corregido: FACTI["<b>De Hecho</b><br/>Voluntad del due├▒o<br/><i>(Biblioteca, Reba├▒o)</i>"]
+   7. L├¡nea 24:
+      Original: IURIS[<b>De Derecho</b><br/>Por Ley - Activo+Pasivo<br/><i>(Herencia - Art 659)</i>]
+      Corregido: IURIS["<b>De Derecho</b><br/>Por Ley - Activo+Pasivo<br/><i>(Herencia - Art 659)</i>"]
+   8. L├¡nea 28:
+      Original: subgraph title: 3. JERARQU├ìA Y CONEXI├ôN (La relaci├│n)
+      Corregido: subgraph title: "3. JERARQU├ìA Y CONEXI├ôN (La relaci├│n)"
+   9. L├¡nea 45:
+      Original: INT[<b>PARTES INTEGRANTES</b><br/>Inmuebles por incorporaci├│n<br/>(Ladrillos)]
+      Corregido: INT["<b>PARTES INTEGRANTES</b><br/>Inmuebles por incorporaci├│n<br/>(Ladrillos)"]
+   10. L├¡nea 48:
+      Original: PERT[<b>PERTENENCIAS</b><br/>Inmuebles por destino<br/>(Tractor en finca)]
+      Corregido: PERT["<b>PERTENENCIAS</b><br/>Inmuebles por destino<br/>(Tractor en finca)"]
+   11. L├¡nea 49:
+      Original: DEST[Acto de Destinaci├│n<br/>(Voluntad del due├▒o)]
+      Corregido: DEST["Acto de Destinaci├│n<br/>(Voluntad del due├▒o)"]
+   12. L├¡nea 50:
+      Original: RULE[<b>ACCESORIO SIGUE A PRINCIPAL</b><br/>Venta finca = Venta tractor<br/>(Arts. 883, 1097)]
+      Corregido: RULE["<b>ACCESORIO SIGUE A PRINCIPAL</b><br/>Venta finca = Venta tractor<br/>(Arts. 883, 1097)"]
+
+­ƒôØ SUBGRAPHS EN C├ôDIGO CORREGIDO:
+   L├¡nea 6: subgraph B1 ["1. ┬┐C├ôMO EXISTE LA COSA? (Ontolog├¡a)"]
+   L├¡nea 19: subgraph B2 ["2. ┬┐C├ôMO SE AGRUPAN? (Universalidades)"]
+   L├¡nea 28: subgraph B3 ["3. JERARQU├ìA Y CONEXI├ôN (La relaci├│n)"]
+
+Ô£à VERIFICACI├ôN FINAL:
+   Ô£ô Todos los t├¡tulos de subgraph est├ín correctamente entrecomillados
+
+================================================================================
+TEST COMPLETADO
+================================================================================

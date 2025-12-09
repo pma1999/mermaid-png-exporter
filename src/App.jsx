@@ -216,6 +216,8 @@ export default function App() {
   `;
 
   // Render mobile layout with tabs
+  // IMPORTANT: Both panels stay mounted to preserve previewRef and rendered SVG
+  // Visibility is controlled via CSS to avoid re-rendering Mermaid when switching tabs
   const renderMobileLayout = () => (
     <>
       <MobileTabBar
@@ -224,13 +226,30 @@ export default function App() {
         colors={colors}
       />
       <div style={styles.panelContainer}>
-        {activePanel === 'editor' ? (
+        {/* Editor Panel - always mounted, visibility controlled by CSS */}
+        <div
+          style={{
+            display: activePanel === 'editor' ? 'flex' : 'none',
+            flexDirection: 'column',
+            flex: 1,
+            overflow: 'hidden',
+          }}
+        >
           <EditorPanel
             code={code}
             onCodeChange={setCode}
             isMobile={isMobile}
           />
-        ) : (
+        </div>
+        {/* Preview Panel - always mounted to preserve rendered SVG */}
+        <div
+          style={{
+            display: activePanel === 'preview' ? 'flex' : 'none',
+            flexDirection: 'column',
+            flex: 1,
+            overflow: 'hidden',
+          }}
+        >
           <PreviewPanel
             previewRef={previewRef}
             isRendering={isRendering}
@@ -239,7 +258,7 @@ export default function App() {
             onAutoFix={handleAutoFix}
             isMobile={isMobile}
           />
-        )}
+        </div>
       </div>
     </>
   );

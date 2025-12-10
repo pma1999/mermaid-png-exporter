@@ -1,4 +1,5 @@
 import { useTheme } from '../../hooks/useTheme';
+import { useLanguage } from '../../hooks/useLanguage';
 
 const SCALES = [1, 2, 3, 4];
 
@@ -11,6 +12,7 @@ const SCALES = [1, 2, 3, 4];
  */
 export function ScaleSelector({ value, onChange, isMobile = false }) {
     const { colors } = useTheme();
+    const { t } = useLanguage();
 
     const styles = {
         container: {
@@ -56,7 +58,7 @@ export function ScaleSelector({ value, onChange, isMobile = false }) {
 
     return (
         <div style={styles.container}>
-            <label style={styles.label}>Escala</label>
+            <label style={styles.label}>{t('footer.scale')}</label>
             <div style={styles.buttons}>
                 {SCALES.map((scale) => (
                     <button
@@ -74,3 +76,4 @@ export function ScaleSelector({ value, onChange, isMobile = false }) {
         </div>
     );
 }
+

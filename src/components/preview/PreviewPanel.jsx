@@ -1,4 +1,5 @@
 import { useTheme } from '../../hooks/useTheme';
+import { useLanguage } from '../../hooks/useLanguage';
 import { ErrorDisplay } from '../error';
 
 /**
@@ -22,6 +23,7 @@ export function PreviewPanel({
     isTablet = false,
 }) {
     const { colors } = useTheme();
+    const { t } = useLanguage();
 
     const styles = {
         section: {
@@ -97,7 +99,7 @@ export function PreviewPanel({
         <section style={styles.section}>
             <div style={styles.header}>
                 <span style={styles.title}>
-                    Vista previa
+                    {t('preview.title')}
                     {isRendering && <span style={styles.renderingDot} />}
                 </span>
             </div>
@@ -122,3 +124,4 @@ export function PreviewPanel({
         </section>
     );
 }
+

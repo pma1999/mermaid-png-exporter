@@ -1,7 +1,10 @@
 import { useState } from 'react';
 import { useTheme } from '../../hooks/useTheme';
+import { useLanguage } from '../../hooks/useLanguage';
 import { IconButton } from '../ui';
-import { EXAMPLE_DIAGRAMS, DIAGRAM_TYPES } from '../../config/examples';
+
+// Diagram types (labels are not translated as they are Mermaid syntax names)
+const DIAGRAM_TYPES = ['flowchart', 'sequence', 'classDiagram', 'stateDiagram', 'erDiagram', 'gantt', 'pie', 'mindmap'];
 
 // Icono de copiar
 const CopyIcon = () => (
@@ -29,6 +32,7 @@ const CheckIcon = () => (
 export function EditorPanel({ code, onCodeChange, isMobile = false, isTablet = false }) {
     const [copied, setCopied] = useState(false);
     const { theme, colors } = useTheme();
+    const { t, getTranslations } = useLanguage();
 
     const copyCode = () => {
         navigator.clipboard.writeText(code);
@@ -37,7 +41,11 @@ export function EditorPanel({ code, onCodeChange, isMobile = false, isTablet = f
     };
 
     const loadExample = (type) => {
-        onCodeChange(EXAMPLE_DIAGRAMS[type]);
+        const translations = getTranslations();
+        const exampleCode = translations.examples?.[type];
+        if (exampleCode) {
+            onCodeChange(exampleCode);
+        }
     };
 
     const styles = {
@@ -127,11 +135,11 @@ export function EditorPanel({ code, onCodeChange, isMobile = false, isTablet = f
             {hideScrollbarCSS && <style>{hideScrollbarCSS}</style>}
 
             <div style={styles.header}>
-                <span style={styles.title}>Código Mermaid</span>
+                <span style={styles.title}>{t('editor.title')}</span>
                 <IconButton
                     onClick={copyCode}
                     icon={copied ? <CheckIcon /> : <CopyIcon />}
-                    title="Copiar código"
+                    title={t('editor.copy')}
                 />
             </div>
 
@@ -152,9 +160,10 @@ export function EditorPanel({ code, onCodeChange, isMobile = false, isTablet = f
                 value={code}
                 onChange={(e) => onCodeChange(e.target.value)}
                 style={styles.textarea}
-                placeholder="Pega tu código Mermaid aquí..."
+                placeholder={t('editor.placeholder')}
                 spellCheck={false}
             />
         </section>
     );
 }
+

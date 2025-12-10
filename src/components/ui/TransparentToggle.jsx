@@ -1,4 +1,5 @@
 import { useTheme } from '../../hooks/useTheme';
+import { useLanguage } from '../../hooks/useLanguage';
 
 /**
  * Toggle de fondo transparente (Responsive)
@@ -9,6 +10,7 @@ import { useTheme } from '../../hooks/useTheme';
  */
 export function TransparentToggle({ value, onChange, isMobile = false }) {
     const { colors, isDark } = useTheme();
+    const { t } = useLanguage();
 
     const styles = {
         label: {
@@ -59,7 +61,8 @@ export function TransparentToggle({ value, onChange, isMobile = false }) {
                     </svg>
                 )}
             </span>
-            <span style={styles.text}>{isMobile ? 'Transp.' : 'Fondo transparente'}</span>
+            <span style={styles.text}>{isMobile ? t('footer.transparentShort') : t('footer.transparent')}</span>
         </label>
     );
 }
+

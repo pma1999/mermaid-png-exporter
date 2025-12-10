@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useTheme } from '../../hooks/useTheme';
+import { useLanguage } from '../../hooks/useLanguage';
 
 /**
  * Componente para mostrar errores de forma detallada con auto-fix (Responsive)
@@ -13,6 +14,7 @@ export function ErrorDisplay({ errorInfo, code, onAutoFix, isMobile = false }) {
     const [expanded, setExpanded] = useState(false);
     const [showPreview, setShowPreview] = useState(false);
     const { colors } = useTheme();
+    const { t } = useLanguage();
 
     if (!errorInfo) return null;
 
@@ -284,7 +286,7 @@ export function ErrorDisplay({ errorInfo, code, onAutoFix, isMobile = false }) {
                 <div style={styles.titleSection}>
                     <span style={styles.title}>{errorInfo.summary}</span>
                     {errorInfo.lineNumber && (
-                        <span style={styles.lineIndicator}>Línea {errorInfo.lineNumber}</span>
+                        <span style={styles.lineIndicator}>{t('error.line')} {errorInfo.lineNumber}</span>
                     )}
                 </div>
 
@@ -295,12 +297,12 @@ export function ErrorDisplay({ errorInfo, code, onAutoFix, isMobile = false }) {
                         <button
                             onClick={onAutoFix}
                             style={styles.autoFixButton}
-                            title="Corregir automáticamente todos los problemas detectados"
+                            title={t('error.fixTooltip')}
                         >
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                 <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
                             </svg>
-                            {isMobile ? 'Fix' : 'Auto-Fix'}
+                            {isMobile ? t('error.fix') : t('error.autoFix')}
                         </button>
                     )}
 
@@ -308,7 +310,7 @@ export function ErrorDisplay({ errorInfo, code, onAutoFix, isMobile = false }) {
                         <button
                             onClick={() => setExpanded(!expanded)}
                             style={styles.expandButton}
-                            title={expanded ? 'Ocultar detalles' : 'Ver detalles'}
+                            title={expanded ? t('error.hideDetails') : t('error.showDetails')}
                         >
                             <svg
                                 width="16"
@@ -332,7 +334,7 @@ export function ErrorDisplay({ errorInfo, code, onAutoFix, isMobile = false }) {
                     {/* Línea problemática */}
                     {errorInfo.errorLine && (
                         <div style={styles.section}>
-                            <span style={styles.sectionLabel}>Código problemático:</span>
+                            <span style={styles.sectionLabel}>{t('error.problematicCode')}</span>
                             <code style={styles.codeBlock}>{errorInfo.errorLine.trim()}</code>
                         </div>
                     )}
@@ -340,7 +342,7 @@ export function ErrorDisplay({ errorInfo, code, onAutoFix, isMobile = false }) {
                     {/* Explicación */}
                     {errorInfo.pattern && (
                         <div style={styles.section}>
-                            <span style={styles.sectionLabel}>¿Qué ocurre?</span>
+                            <span style={styles.sectionLabel}>{t('error.whatHappened')}</span>
                             <p style={styles.explanation}>{errorInfo.pattern.explanation}</p>
                         </div>
                     )}
@@ -349,7 +351,7 @@ export function ErrorDisplay({ errorInfo, code, onAutoFix, isMobile = false }) {
                     {errorInfo.issues?.length > 0 && (
                         <div style={styles.section}>
                             <span style={styles.sectionLabel}>
-                                Problemas detectados ({errorInfo.issues.length}):
+                                {t('error.issuesDetected')} ({errorInfo.issues.length}):
                             </span>
                             <div style={styles.issuesList}>
                                 {errorInfo.issues.slice(0, isMobile ? 3 : 5).map((issue, idx) => (
@@ -360,7 +362,7 @@ export function ErrorDisplay({ errorInfo, code, onAutoFix, isMobile = false }) {
                                 ))}
                                 {errorInfo.issues.length > (isMobile ? 3 : 5) && (
                                     <span style={styles.issueMore}>
-                                        +{errorInfo.issues.length - (isMobile ? 3 : 5)} más...
+                                        +{errorInfo.issues.length - (isMobile ? 3 : 5)} {t('error.more')}
                                     </span>
                                 )}
                             </div>
@@ -374,14 +376,14 @@ export function ErrorDisplay({ errorInfo, code, onAutoFix, isMobile = false }) {
                                 onClick={() => setShowPreview(!showPreview)}
                                 style={styles.previewToggle}
                             >
-                                {showPreview ? '▼' : '▶'} Ver cambios que se aplicarán ({errorInfo.autoFixPreview.length})
+                                {showPreview ? '▼' : '▶'} {t('error.changesPreview')} ({errorInfo.autoFixPreview.length})
                             </button>
 
                             {showPreview && (
                                 <div style={styles.previewContainer}>
                                     {errorInfo.autoFixPreview.map((fix, idx) => (
                                         <div key={idx} style={styles.previewItem}>
-                                            <div style={styles.previewHeader}>Línea {fix.line}</div>
+                                            <div style={styles.previewHeader}>{t('error.line')} {fix.line}</div>
                                             <div style={styles.previewOld}>
                                                 <span style={styles.previewLabel}>−</span>
                                                 <code>{fix.original}</code>
@@ -400,14 +402,14 @@ export function ErrorDisplay({ errorInfo, code, onAutoFix, isMobile = false }) {
                     {/* Sugerencia */}
                     {errorInfo.pattern?.suggestion && (
                         <div style={styles.section}>
-                            <span style={styles.sectionLabel}>💡 Sugerencia:</span>
+                            <span style={styles.sectionLabel}>💡 {t('error.suggestion')}</span>
                             <p style={styles.suggestion}>{errorInfo.pattern.suggestion}</p>
                         </div>
                     )}
 
                     {/* Mensaje técnico original */}
                     <details style={styles.technicalDetails}>
-                        <summary style={styles.technicalSummary}>Ver mensaje técnico completo</summary>
+                        <summary style={styles.technicalSummary}>{t('error.showTechnical')}</summary>
                         <pre style={styles.technicalMessage}>{errorInfo.message}</pre>
                     </details>
                 </div>

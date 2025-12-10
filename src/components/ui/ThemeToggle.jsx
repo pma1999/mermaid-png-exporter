@@ -1,4 +1,5 @@
 import { useTheme } from '../../hooks/useTheme';
+import { useLanguage } from '../../hooks/useLanguage';
 
 /**
  * Botón de toggle para cambiar entre tema oscuro y claro (Responsive)
@@ -7,6 +8,7 @@ import { useTheme } from '../../hooks/useTheme';
  */
 export function ThemeToggle({ isMobile = false }) {
     const { theme, toggleTheme, colors } = useTheme();
+    const { t } = useLanguage();
 
     const styles = {
         button: {
@@ -37,7 +39,7 @@ export function ThemeToggle({ isMobile = false }) {
         <button
             onClick={toggleTheme}
             style={styles.button}
-            title={theme === 'dark' ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+            title={theme === 'dark' ? t('theme.switchToLight') : t('theme.switchToDark')}
         >
             {theme === 'dark' ? (
                 <>
@@ -52,16 +54,17 @@ export function ThemeToggle({ isMobile = false }) {
                         <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
                         <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
                     </svg>
-                    <span style={styles.label}>Claro</span>
+                    <span style={styles.label}>{t('theme.light')}</span>
                 </>
             ) : (
                 <>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
                     </svg>
-                    <span style={styles.label}>Oscuro</span>
+                    <span style={styles.label}>{t('theme.dark')}</span>
                 </>
             )}
         </button>
     );
 }
+

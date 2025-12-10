@@ -1,5 +1,6 @@
 import { useTheme } from '../../hooks/useTheme';
-import { ThemeToggle } from '../ui';
+import { useLanguage } from '../../hooks/useLanguage';
+import { ThemeToggle, LanguageSelector } from '../ui';
 
 // Logo SVG como componente
 function Logo({ size = 32 }) {
@@ -41,6 +42,7 @@ function Logo({ size = 32 }) {
  */
 export function Header({ isMobile = false, isTablet = false }) {
     const { theme, colors } = useTheme();
+    const { t } = useLanguage();
 
     // Responsive styles
     const styles = {
@@ -74,7 +76,7 @@ export function Header({ isMobile = false, isTablet = false }) {
         rightSection: {
             display: 'flex',
             alignItems: 'center',
-            gap: isMobile ? '8px' : '16px',
+            gap: isMobile ? '8px' : '12px',
         },
         subtitle: {
             fontSize: '13px',
@@ -94,10 +96,12 @@ export function Header({ isMobile = false, isTablet = false }) {
                 </div>
 
                 <div style={styles.rightSection}>
+                    <LanguageSelector isMobile={isMobile} />
                     <ThemeToggle isMobile={isMobile} />
-                    <p style={styles.subtitle}>Exportador de alta calidad</p>
+                    <p style={styles.subtitle}>{t('header.subtitle')}</p>
                 </div>
             </div>
         </header>
     );
 }
+

@@ -1,3 +1,5 @@
+import { useLanguage } from '../../hooks/useLanguage';
+
 /**
  * Botón de exportación con estados de carga y éxito (Responsive)
  * @param {Object} props
@@ -8,6 +10,8 @@
  * @param {boolean} props.fullWidth - Full width mode for mobile
  */
 export function ExportButton({ onClick, disabled, isExporting, success, fullWidth = false }) {
+    const { t } = useLanguage();
+
     const styles = {
         button: {
             padding: fullWidth ? '16px 28px' : '14px 28px',
@@ -50,7 +54,7 @@ export function ExportButton({ onClick, disabled, isExporting, success, fullWidt
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <polyline points="20 6 9 17 4 12" />
                     </svg>
-                    Descargado
+                    {t('export.success')}
                 </>
             ) : (
                 <>
@@ -59,9 +63,10 @@ export function ExportButton({ onClick, disabled, isExporting, success, fullWidt
                         <polyline points="7 10 12 15 17 10" />
                         <line x1="12" y1="15" x2="12" y2="3" />
                     </svg>
-                    Exportar PNG
+                    {t('export.button')}
                 </>
             )}
         </button>
     );
 }
+

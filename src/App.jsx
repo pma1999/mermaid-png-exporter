@@ -1,10 +1,12 @@
-import { useState, useCallback } from 'react';
-import { DEFAULT_DIAGRAM } from './config/mermaid.config';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useTheme } from './hooks/useTheme';
+import { useLanguage } from './hooks/useLanguage';
 import { useMediaQuery } from './hooks/useMediaQuery';
 import { useMermaidRenderer } from './hooks/useMermaidRenderer';
 import { useExportPNG } from './hooks/useExportPNG';
 import { autoFixMermaidCode } from './utils/mermaidAutoFix';
+import { DEFAULT_DIAGRAMS } from './config/mermaid.config';
+import { translations } from './i18n';
 
 import { Header, Footer } from './components/layout';
 import { EditorPanel } from './components/editor';
@@ -28,10 +30,10 @@ const EyeIcon = () => (
 /**
  * Mobile Tab Bar Component
  */
-function MobileTabBar({ activePanel, onPanelChange, colors }) {
+function MobileTabBar({ activePanel, onPanelChange, colors, t }) {
   const tabs = [
-    { id: 'editor', label: 'Código', icon: <CodeIcon /> },
-    { id: 'preview', label: 'Vista previa', icon: <EyeIcon /> },
+    { id: 'editor', label: t('tabs.code'), icon: <CodeIcon /> },
+    { id: 'preview', label: t('tabs.preview'), icon: <EyeIcon /> },
   ];
 
   const styles = {
@@ -91,8 +93,17 @@ function MobileTabBar({ activePanel, onPanelChange, colors }) {
  * Mermaid → PNG Exporter
  */
 export default function App() {
-  // Estado principal
-  const [code, setCode] = useState(DEFAULT_DIAGRAM);
+  // Language hook first to get initial language for default code
+  const { t, language } = useLanguage();
+
+  // Estado principal - use localized default diagram
+  const [code, setCode] = useState(() => {
+    // Get initial language from localStorage or browser detection  
+    const storedLang = localStorage.getItem('mermaid-exporter-language');
+    const browserLang = navigator.language?.toLowerCase().startsWith('es') ? 'es' : 'en';
+    const initialLang = storedLang || browserLang;
+    return DEFAULT_DIAGRAMS[initialLang] || DEFAULT_DIAGRAMS.en;
+  });
   const [exportScale, setExportScale] = useState(3);
   const [bgTransparent, setBgTransparent] = useState(false);
   const [activePanel, setActivePanel] = useState('preview'); // Default to preview on mobile
@@ -113,6 +124,47 @@ export default function App() {
     isExporting,
     exportSuccess
   } = useExportPNG(previewRef);
+
+  // Track previous language to detect changes
+  const prevLanguageRef = useRef(language);
+
+  // Smart example sync: when language changes, update code if it's an unmodified example
+  useEffect(() => {
+    // Skip on initial render
+    if (prevLanguageRef.current === language) return;
+
+    const prevLang = prevLanguageRef.current;
+    const newLang = language;
+    prevLanguageRef.current = language;
+
+    // Normalize code for comparison (trim whitespace)
+    const normalizedCode = code.trim();
+
+    // Check if current code matches any example from the PREVIOUS language
+    const prevTranslations = translations[prevLang];
+    const newTranslations = translations[newLang];
+
+    if (!prevTranslations?.examples || !newTranslations?.examples) return;
+
+    // Also check default diagrams
+    if (normalizedCode === DEFAULT_DIAGRAMS[prevLang]?.trim()) {
+      setCode(DEFAULT_DIAGRAMS[newLang]);
+      return;
+    }
+
+    // Check each example type
+    for (const [exampleType, exampleCode] of Object.entries(prevTranslations.examples)) {
+      if (normalizedCode === exampleCode.trim()) {
+        // Found a match! Replace with the same example in the new language
+        const newExampleCode = newTranslations.examples[exampleType];
+        if (newExampleCode) {
+          setCode(newExampleCode);
+        }
+        return;
+      }
+    }
+    // If no match found, keep current code (user has modified it)
+  }, [language, code]);
 
   // Handlers
   const handleAutoFix = useCallback(() => {
@@ -235,6 +287,7 @@ export default function App() {
         activePanel={activePanel}
         onPanelChange={setActivePanel}
         colors={colors}
+        t={t}
       />
       <div style={styles.panelContainer}>
         {/* Editor Panel - always mounted, visibility controlled by CSS */}

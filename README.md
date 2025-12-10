@@ -241,6 +241,6 @@ Este proyecto está bajo la Licencia MIT. Ver el archivo [LICENSE](LICENSE) para
 
 **Hecho con ❤️ para la comunidad de desarrolladores**
 
-[⬆ Volver arriba](#-mermaid--png-exporter)
+[⬆ Volver arriba](#mermaid--png-exporter)
 
 </div>

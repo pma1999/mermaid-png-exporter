@@ -1,5 +1,7 @@
 <div align="center">
 
+<a id="top"></a>
+
 # 🧜‍♀️ Mermaid → PNG Exporter
 
 **Exporta diagramas Mermaid a PNG de alta calidad con un solo clic**
@@ -241,6 +243,6 @@ Este proyecto está bajo la Licencia MIT. Ver el archivo [LICENSE](LICENSE) para
 
 **Hecho con ❤️ para la comunidad de desarrolladores**
 
-[⬆ Volver arriba](#mermaid--png-exporter)
+[⬆ Volver arriba](#top)
 
 </div>

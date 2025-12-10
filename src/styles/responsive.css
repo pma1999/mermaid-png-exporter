@@ -1,12 +1,54 @@
 /**
  * Responsive Design System
  * Mobile-first approach with progressive enhancement
- * 
+ *
  * Breakpoints:
  * - Mobile: ≤768px
- * - Tablet: 769px - 1024px  
+ * - Tablet: 769px - 1024px
  * - Desktop: >1024px
  */
+
+/* ========================================
+   Mobile Viewport Height Fix
+   ======================================== */
+
+/*
+ * Fix for mobile browsers where 100vh doesn't account for browser chrome.
+ * Uses dvh (dynamic viewport height) with fallbacks.
+ * This is critical for ensuring the footer is always visible.
+ */
+.app-container {
+    /* Fallback for older browsers */
+    height: 100vh;
+    min-height: 100vh;
+}
+
+/* Modern browsers: use dynamic viewport height */
+@supports (height: 100dvh) {
+    .app-container {
+        height: 100dvh;
+        min-height: 100dvh;
+    }
+}
+
+/* iOS Safari fallback */
+@supports (-webkit-touch-callout: none) {
+    .app-container {
+        height: -webkit-fill-available;
+        min-height: -webkit-fill-available;
+    }
+}
+
+/* ========================================
+   Safe Area Insets (Notch, Gesture Nav)
+   ======================================== */
+
+/* Ensure safe-area-inset works on all devices */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+    .app-footer {
+        padding-bottom: calc(12px + env(safe-area-inset-bottom)) !important;
+    }
+}
 
 /* ========================================
    CSS Custom Properties (Responsive)

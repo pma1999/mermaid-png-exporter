@@ -1,0 +1,14 @@
+User-agent: *
+Allow: /
+
+# Sitemap
+Sitemap: https://mermaid-png-exporter.vercel.app/sitemap.xml
+
+# Crawl-delay (optional, helps with server load)
+Crawl-delay: 1
+
+# Disallow paths that don't need indexing
+Disallow: /assets/
+Disallow: /sw.js
+Disallow: /workbox-*.js
+Disallow: /registerSW.js

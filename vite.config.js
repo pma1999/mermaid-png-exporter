@@ -7,16 +7,21 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['icon.svg'],
+      includeAssets: ['icon.svg', 'og-image.png', 'robots.txt', 'sitemap.xml'],
       manifest: {
-        name: 'Mermaid PNG Exporter',
+        name: 'Mermaid PNG Exporter - High Quality Diagram Export',
         short_name: 'MermaidPNG',
-        description: 'Exportador de diagramas Mermaid a PNG de alta calidad',
+        description: 'Free online tool to export Mermaid diagrams to high-quality PNG. Supports flowcharts, sequence, class, state, ER, Gantt, pie charts & mind maps. Works offline!',
+        lang: 'es',
         theme_color: '#6366f1',
         background_color: '#0f172a',
         display: 'standalone',
         orientation: 'any',
         start_url: '/',
+        scope: '/',
+        id: 'mermaid-png-exporter',
+        categories: ['developer tools', 'utilities', 'productivity', 'graphics & design'],
+        prefer_related_applications: false,
         icons: [
           {
             src: 'icon-192.png',
@@ -34,7 +39,27 @@ export default defineConfig({
             type: 'image/png',
             purpose: 'maskable'
           }
-        ]
+        ],
+        screenshots: [
+          {
+            src: 'og-image.png',
+            sizes: '1200x630',
+            type: 'image/png',
+            form_factor: 'wide',
+            label: 'Mermaid PNG Exporter - Main Interface'
+          }
+        ],
+        shortcuts: [
+          {
+            name: 'New Diagram',
+            short_name: 'New',
+            description: 'Create a new Mermaid diagram',
+            url: '/',
+            icons: [{ src: 'icon-192.png', sizes: '192x192' }]
+          }
+        ],
+        related_applications: [],
+        handle_links: 'preferred'
       },
       workbox: {
         // Only precache core assets, not large diagram chunks

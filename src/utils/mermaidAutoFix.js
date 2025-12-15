@@ -1,5 +1,5 @@
 /**
- * Sistema de Auto-corrección de código Mermaid v2.1
+ * Sistema de Auto-corrección de código Mermaid v2.2
  * 
  * PRINCIPIO FUNDAMENTAL: "First, do no harm"
  * - Solo modificar nodos que CLARAMENTE tienen problemas
@@ -11,6 +11,7 @@
  * - Especiales: [/  /], [\  \], ([  ]), [[  ]], [(  )], ((  )), (((  ))), {{  }}
  * 
  * v2.1 - Fix para subgraph titles con paréntesis
+ * v2.2 - Fix para comillas internas que causan error STR (string literal)
  */
 
 // =============================================================================
@@ -105,6 +106,65 @@ const hasUnquotedParentheses = (content) => {
     return false;
 };
 
+/**
+ * Verifica si el contenido tiene comillas internas problemáticas
+ * Las comillas " dentro de nodos (que no forman un entrecomillado completo)
+ * causan que Mermaid las interprete como inicio de string literal (token STR)
+ * 
+ * @param {string} content - El contenido a analizar
+ * @returns {boolean}
+ */
+const hasProblematicQuotes = (content) => {
+    if (!content || content.trim() === '') return false;
+
+    const trimmed = content.trim();
+
+    // Si está completamente entrecomillado con comillas al inicio Y fin, NO hay problema
+    // porque Mermaid lo interpretará correctamente como texto entrecomillado
+    if (isFullyQuoted(trimmed)) {
+        return false;
+    }
+
+    // Buscar comillas dobles en el contenido
+    // Si hay comillas pero no envuelven completamente el contenido, son problemáticas
+    const quoteAnalysis = analyzeQuotes(content);
+    
+    // Si tiene comillas dobles que no forman un entrecomillado completo, es problemático
+    if (quoteAnalysis.double > 0) {
+        return true;
+    }
+
+    return false;
+};
+
+/**
+ * Función unificada que detecta cualquier contenido problemático
+ * Combina detección de paréntesis y comillas internas
+ * 
+ * @param {string} content - El contenido a analizar
+ * @returns {boolean}
+ */
+const hasProblematicContent = (content) => {
+    if (!content || content.trim() === '') return false;
+
+    // Si está completamente entrecomillado, no hay problema
+    if (isFullyQuoted(content.trim())) {
+        return false;
+    }
+
+    // Verificar paréntesis problemáticos
+    if (hasUnquotedParentheses(content)) {
+        return true;
+    }
+
+    // Verificar comillas internas problemáticas
+    if (hasProblematicQuotes(content)) {
+        return true;
+    }
+
+    return false;
+};
+
 // =============================================================================
 // FUNCIONES DE CORRECCIÓN
 // =============================================================================
@@ -153,8 +213,8 @@ const fixSpecialNode = (nodeId, content, openDelim, closeDelim, modifier = '') =
         return `${nodeId}${openDelim}${content}${closeDelim}${modifier}`;
     }
 
-    // Si tiene paréntesis fuera de comillas, corregir
-    if (hasUnquotedParentheses(content)) {
+    // Si tiene contenido problemático (paréntesis o comillas internas), corregir
+    if (hasProblematicContent(content)) {
         const quoted = safeQuote(content);
         return `${nodeId}${openDelim}${quoted}${closeDelim}${modifier}`;
     }
@@ -197,8 +257,8 @@ const fixSubgraphTitle = (line) => {
         return { fixed: line, wasModified: false, original: '', fixedTitle: '' };
     }
     
-    // Si el título tiene paréntesis sin entrecomillar, corregir
-    if (hasUnquotedParentheses(title)) {
+    // Si el título tiene contenido problemático (paréntesis o comillas), corregir
+    if (hasProblematicContent(title)) {
         const quotedTitle = safeQuote(title);
         const fixedLine = line.replace(fullMatch, `${prefix}${id} [${quotedTitle}]`);
         return { 
@@ -286,8 +346,8 @@ const parseAndFixNodes = (line) => {
                 }
             }
 
-            // Solo procesar si tiene paréntesis problemáticos Y no está entrecomillado
-            if (hasUnquotedParentheses(content)) {
+            // Solo procesar si tiene contenido problemático (paréntesis o comillas) Y no está entrecomillado
+            if (hasProblematicContent(content)) {
                 const fixed = fixSpecialNode(nodeId, content, openDelim, closeDelim, modifier || '');
                 if (fixed !== fullMatch) {
                     fixes.push({
@@ -329,8 +389,8 @@ const parseAndFixNodes = (line) => {
             continue; // Ya está bien
         }
 
-        // Solo corregir si tiene paréntesis problemáticos
-        if (hasUnquotedParentheses(content)) {
+        // Solo corregir si tiene contenido problemático (paréntesis o comillas)
+        if (hasProblematicContent(content)) {
             const quoted = safeQuote(content);
             const fixed = `${nodeId}[${quoted}]${modifier || ''}`;
 
@@ -369,8 +429,8 @@ const parseAndFixNodes = (line) => {
         // Verificar si ya está entrecomillado
         if (isFullyQuoted(content.trim())) continue;
 
-        // Solo corregir si tiene paréntesis problemáticos
-        if (hasUnquotedParentheses(content)) {
+        // Solo corregir si tiene contenido problemático (paréntesis o comillas)
+        if (hasProblematicContent(content)) {
             const quoted = safeQuote(content);
             const fixed = `${nodeId}{${quoted}}${modifier || ''}`;
 
@@ -558,7 +618,7 @@ export const analyzeCode = (code) => {
                     line: index + 1,
                     type: 'unquoted_special_chars',
                     content: fix.original,
-                    description: 'Paréntesis o caracteres especiales sin entrecomillar'
+                    description: 'Paréntesis o comillas internas sin escapar correctamente'
                 });
             });
         }

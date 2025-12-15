@@ -27,12 +27,29 @@ const SPECIAL_SHAPES_DETECT = [
 ];
 
 /**
- * Verifica si el contenido tiene paréntesis problemáticos fuera de comillas
+ * Verifica si el contenido tiene caracteres problemáticos:
+ * - Paréntesis fuera de comillas
+ * - Comillas internas que no forman un entrecomillado completo
  */
 const hasProblematicContent = (content) => {
     const trimmed = content.trim();
-    if (/^"[^]*"$/.test(trimmed)) return false;
+    
+    // Si está completamente entrecomillado con comillas al inicio Y fin, no hay problema
+    if (/^"[^]*"$/.test(trimmed) && (trimmed.match(/"/g) || []).length === 2) {
+        return false;
+    }
 
+    // Detectar comillas internas problemáticas (comillas que no envuelven todo el contenido)
+    const doubleQuotes = (content.match(/"/g) || []).length;
+    if (doubleQuotes > 0) {
+        // Si hay comillas pero no forman un entrecomillado completo, es problemático
+        const isFullyQuoted = trimmed.startsWith('"') && trimmed.endsWith('"') && doubleQuotes === 2;
+        if (!isFullyQuoted) {
+            return true;
+        }
+    }
+
+    // Detectar paréntesis fuera de comillas
     let inQuotes = false;
     for (let i = 0; i < content.length; i++) {
         const char = content[i];

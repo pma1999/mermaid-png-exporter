@@ -444,7 +444,99 @@ const parseAndFixNodes = (line) => {
         }
     }
 
-    // Procesar nodos básicos con corchetes []
+    // =========================================================================
+    // FIX PRO: Parsing manual de nodos redondos id(...) con paréntesis anidados
+    // =========================================================================
+
+    // Regex para encontrar el inicio de un nodo: word + spaces + (
+    const startRegex = /(\w+)\s*\(/g;
+    let startMatch;
+
+    while ((startMatch = startRegex.exec(line)) !== null) {
+        const nodeId = startMatch[1];
+        const openParenIndex = startMatch.index + startMatch[0].length - 1; // Index of '('
+
+        // Verificar que NO es una forma especial
+        // Formas especiales que empiezan con (: ((, (((, ([, (\
+        if (openParenIndex + 1 < line.length) {
+            const nextChar = line[openParenIndex + 1];
+            if (nextChar === '(' || nextChar === '[' || nextChar === '\\' || nextChar === '/') {
+                continue; // Es una forma especial, ya procesada arriba
+            }
+        }
+
+        // Verificar que no ha sido procesado ya
+        // Esto es importante para no procesar sub-partes de algo ya arreglado
+        const isProcessed = fixes.some(f =>
+            openParenIndex >= f.start && openParenIndex < f.end
+        );
+        if (isProcessed) continue;
+
+        // Buscar el cierre balanceado )
+        let balance = 1;
+        let closeParenIndex = -1;
+        let inQuotes = false;
+        let quoteChar = '';
+
+        for (let i = openParenIndex + 1; i < line.length; i++) {
+            const char = line[i];
+            const prevChar = i > 0 ? line[i - 1] : '';
+
+            // Manejar comillas para ignorar parens dentro de strings
+            if ((char === '"' || char === "'") && prevChar !== '\\') {
+                if (!inQuotes) {
+                    inQuotes = true;
+                    quoteChar = char;
+                } else if (char === quoteChar) {
+                    inQuotes = false;
+                }
+            }
+
+            if (!inQuotes) {
+                if (char === '(') balance++;
+                else if (char === ')') {
+                    balance--;
+                    if (balance === 0) {
+                        closeParenIndex = i;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (closeParenIndex !== -1) {
+            // Encontramos el nodo completo: id ( content )
+            const content = line.substring(openParenIndex + 1, closeParenIndex);
+
+            // Buscar modificador opcional después (:::class)
+            let modifier = '';
+            const remainingLine = line.substring(closeParenIndex + 1);
+            const modMatch = remainingLine.match(/^\s*(:::?[\w\-]+)/);
+            if (modMatch) {
+                modifier = modMatch[1];
+            }
+
+            // Calcular el string completo original
+            const totalEnd = closeParenIndex + 1 + (modMatch ? modMatch[0].length : 0);
+            const finalFullMatch = line.substring(startMatch.index, totalEnd);
+
+            // Solo procesar si tiene contenido problemático
+            if (hasProblematicContent(content)) {
+                // Para nodos redondos, si hay paréntesis internos, SIEMPRE debemos entrecomillar
+                const fixedContent = safeQuote(content);
+                const fixed = `${nodeId}(${fixedContent})${modifier}`;
+
+                if (fixed !== finalFullMatch) {
+                    fixes.push({
+                        original: finalFullMatch,
+                        fixed: fixed,
+                        start: startMatch.index,
+                        end: totalEnd
+                    });
+                }
+            }
+        }
+    }
     // IMPORTANTE: Excluir formas especiales que ya fueron procesadas
     const bracketRegex = /(\w+)\s*\[([^\]]+)\](:::?\w+)?/g;
     let match;

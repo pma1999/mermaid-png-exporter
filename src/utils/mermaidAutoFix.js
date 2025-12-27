@@ -1,5 +1,5 @@
 /**
- * Sistema de Auto-corrección de código Mermaid v2.2
+ * Sistema de Auto-corrección de código Mermaid v2.3
  * 
  * PRINCIPIO FUNDAMENTAL: "First, do no harm"
  * - Solo modificar nodos que CLARAMENTE tienen problemas
@@ -12,6 +12,7 @@
  * 
  * v2.1 - Fix para subgraph titles con paréntesis
  * v2.2 - Fix para comillas internas que causan error STR (string literal)
+ * v2.3 - Fix para sintaxis inválida después de nodos: ]:(text), }:(text), etc.
  */
 
 // =============================================================================
@@ -128,7 +129,7 @@ const hasProblematicQuotes = (content) => {
     // Buscar comillas dobles en el contenido
     // Si hay comillas pero no envuelven completamente el contenido, son problemáticas
     const quoteAnalysis = analyzeQuotes(content);
-    
+
     // Si tiene comillas dobles que no forman un entrecomillado completo, es problemático
     if (quoteAnalysis.double > 0) {
         return true;
@@ -244,32 +245,114 @@ const fixSubgraphTitle = (line) => {
     // El título es opcional, puede no existir
     const subgraphWithTitleRegex = /^(\s*subgraph\s+)(\w+)\s*\[([^\]]+)\]/;
     const match = line.match(subgraphWithTitleRegex);
-    
+
     if (!match) {
         // No hay título entre corchetes, o no es un subgraph válido
         return { fixed: line, wasModified: false, original: '', fixedTitle: '' };
     }
-    
+
     const [fullMatch, prefix, id, title] = match;
-    
+
     // Si el título ya está entrecomillado, no hacer nada
     if (isFullyQuoted(title.trim())) {
         return { fixed: line, wasModified: false, original: '', fixedTitle: '' };
     }
-    
+
     // Si el título tiene contenido problemático (paréntesis o comillas), corregir
     if (hasProblematicContent(title)) {
         const quotedTitle = safeQuote(title);
         const fixedLine = line.replace(fullMatch, `${prefix}${id} [${quotedTitle}]`);
-        return { 
-            fixed: fixedLine, 
-            wasModified: true, 
+        return {
+            fixed: fixedLine,
+            wasModified: true,
             original: title,
             fixedTitle: quotedTitle
         };
     }
-    
+
     return { fixed: line, wasModified: false, original: '', fixedTitle: '' };
+};
+
+// =============================================================================
+// FIX PARA SINTAXIS INVÁLIDA DESPUÉS DE NODOS
+// =============================================================================
+
+/**
+ * Detecta y corrige sintaxis inválida después de definiciones de nodos.
+ * 
+ * Patrones inválidos detectados:
+ *   NODE[text]:(annotation):::class  →  NODE[text]:::class
+ *   NODE{text}:annotation            →  NODE{text}
+ *   NODE(text):(note)                →  NODE(text)
+ * 
+ * El problema ocurre cuando hay un : seguido de texto/paréntesis DESPUÉS
+ * del cierre del nodo (], }, )), pero que NO es el prefijo ::: de clases CSS.
+ * 
+ * @param {string} line - Línea a procesar
+ * @returns {{fixed: string, wasModified: boolean, original: string, removed: string}}
+ */
+const fixInvalidTrailingSyntax = (line) => {
+    // Patrones de cierre de nodo seguidos de sintaxis inválida
+    // Captura: delimitador de cierre + :texto_inválido (pero NO :::clase)
+    // 
+    // Grupos de captura:
+    // 1: El delimitador de cierre (], }, ), ]], )), )]], etc.)
+    // 2: El texto inválido que debe removerse (incluyendo el : inicial)
+    // 3: La clase CSS si existe (:::className)
+
+    // Regex explicación:
+    // (\]|\}|\)|(?:\]\])|(?:\)\))|(?:\)\]\]))  - Delimitadores de cierre (simples y dobles)
+    // \s*                                       - Espacios opcionales
+    // (:(?!::)[^\s]*?)                          - : seguido de texto que NO es ::: (non-greedy)
+    // (\s*:::?\w+)?                             - Clase CSS opcional
+    // (?=\s|$|-->|-.->|==>|---)                 - Lookahead: debe seguir espacio, fin, o flecha
+
+    // Pattern más robusto que maneja múltiples casos
+    const invalidTrailingPattern = /(\]|\}|\)|(?:\]\])|(?:\)\))|(?:\)\]\]))\s*(:(?!::)[^\s:]*(?:\([^)]*\))?[^\s:]*)(\s*:::?\w+)?(?=\s|$|-->|-.->|==>|---|--)/g;
+
+    let result = line;
+    let wasModified = false;
+    let allRemoved = [];
+    let allOriginal = [];
+
+    // Procesar todos los matches
+    let match;
+    const matches = [];
+
+    // Primero, encontrar todos los matches
+    while ((match = invalidTrailingPattern.exec(line)) !== null) {
+        matches.push({
+            fullMatch: match[0],
+            delimiter: match[1],
+            invalidPart: match[2],
+            cssClass: match[3] || '',
+            index: match.index
+        });
+    }
+
+    // Procesar de derecha a izquierda para no afectar índices
+    for (let i = matches.length - 1; i >= 0; i--) {
+        const m = matches[i];
+
+        // Construir el reemplazo: delimitador + clase (sin la parte inválida)
+        const replacement = m.delimiter + m.cssClass;
+        const original = m.fullMatch;
+
+        // Solo modificar si realmente hay algo que quitar
+        if (m.invalidPart && m.invalidPart.trim()) {
+            result = result.slice(0, m.index) + replacement + result.slice(m.index + original.length);
+            wasModified = true;
+            allRemoved.push(m.invalidPart);
+            allOriginal.push(original);
+        }
+    }
+
+    return {
+        fixed: result,
+        wasModified,
+        original: allOriginal.join(', '),
+        removed: allRemoved.join(', ')
+    };
 };
 
 // =============================================================================
@@ -545,11 +628,26 @@ export const autoFixMermaidCode = (code) => {
             return line; // linkStyle sin problemas, no procesar más
         }
 
+        // FIX ESPECIAL: Sintaxis inválida después de nodos
+        // Patrones como NODE[text]:(annotation):::class son inválidos
+        // El : seguido de texto (no :::) causa parse error "got COLON"
+        const trailingResult = fixInvalidTrailingSyntax(line);
+        let currentLine = line;
+
+        if (trailingResult.wasModified) {
+            allFixes.push({
+                line: index + 1,
+                original: `trailing syntax: ${trailingResult.removed}`,
+                fixed: 'removed invalid trailing text'
+            });
+            currentLine = trailingResult.fixed;
+        }
+
         // Parsear y corregir nodos en esta línea
-        const lineFixes = parseAndFixNodes(line);
+        const lineFixes = parseAndFixNodes(currentLine);
 
         if (lineFixes.length > 0) {
-            const fixedLine = applyFixes(line, lineFixes);
+            const fixedLine = applyFixes(currentLine, lineFixes);
 
             // Registrar los cambios
             lineFixes.forEach(fix => {
@@ -563,7 +661,8 @@ export const autoFixMermaidCode = (code) => {
             return fixedLine;
         }
 
-        return line;
+        // Retornar la línea (posiblemente modificada por trailing fix)
+        return currentLine;
     });
 
     return {

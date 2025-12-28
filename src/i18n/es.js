@@ -45,11 +45,21 @@ export const es = {
         changesPreview: 'Ver cambios que se aplicarán',
         fixTooltip: 'Corregir automáticamente todos los problemas detectados'
     },
-    visibility: {
-        title: 'Mejorar Visibilidad',
-        enhance: 'Alto Contraste (Texto Blanco)',
-        reset: 'Restaurar Original',
-        tooltip: 'Herramientas de Contraste'
+
+    styleEditor: {
+        title: 'Editor de Estilos',
+        editStyles: 'Editar Estilos',
+        tooltip: 'Editar estilos de nodos y corregir problemas de contraste',
+        classesFound: 'clases encontradas',
+        noClasses: 'No se encontraron definiciones classDef en tu código. Añade instrucciones classDef para definir estilos personalizados.',
+        issues: 'problemas',
+        contrast: 'Contraste',
+        sampleText: 'Texto de Ejemplo',
+        autoFix: 'Corregir',
+        fixAll: 'Corregir Todo',
+        apply: 'Aplicar',
+        fill: 'Relleno',
+        textColor: 'Texto',
     },
     examples: {
         flowchart: `flowchart LR

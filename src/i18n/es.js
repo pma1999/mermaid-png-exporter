@@ -46,12 +46,10 @@ export const es = {
         fixTooltip: 'Corregir automáticamente todos los problemas detectados'
     },
     visibility: {
-        title: 'Visibilidad',
-        fixEdgesDark: 'Texto de enlaces oscuro',
-        fixEdgesLight: 'Texto de enlaces claro',
-        fixNodesDark: 'Texto de nodos oscuro',
-        reset: 'Resetear estilos',
-        tooltip: 'Herramientas de Visibilidad'
+        title: 'Mejorar Visibilidad',
+        enhance: 'Alto Contraste (Texto Blanco)',
+        reset: 'Restaurar Original',
+        tooltip: 'Herramientas de Contraste'
     },
     examples: {
         flowchart: `flowchart LR

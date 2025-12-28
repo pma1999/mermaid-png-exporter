@@ -1,18 +1,21 @@
 /**
  * Visibility Fixer Utility
  * 
- * Provides targeted fixes for visibility issues in Mermaid diagrams.
- * Uses a "Direct Injection" approach with robust CSS and LinkStyle.
+ * Provides a single, robust High Contrast Mode to fix visibility issues.
+ * Uses the proven Tri-Layer approach:
+ * 1. Base Theme Init
+ * 2. Wildcard CSS Injection
+ * 3. LinkStyle Command
  */
 
 /**
- * Applies a high-contrast style to the diagram text and lines.
+ * Applies the High Contrast style (White Text, Dark Labels, Dark Lines).
+ * This is the only mode that guarantees visibility across all edge cases.
  * 
  * @param {string} code - The original Mermaid code
- * @param {string} mode - 'dark' (Fix for Dark Text) or 'light' (Fix for Light Text)
  * @returns {string} - The modified code
  */
-export const fixEdgeVisibility = (code, mode = 'dark') => {
+export const applyHighContrast = (code) => {
     if (!code) return code;
 
     const lines = code.split('\n');
@@ -21,40 +24,37 @@ export const fixEdgeVisibility = (code, mode = 'dark') => {
     // --------------------------------------------------------
     // 1. CLEANUP
     // --------------------------------------------------------
-    // Remove old directives and linkStyles
     newLines = newLines.filter(line =>
         !line.trim().startsWith('%%{init:') &&
         !/^\s*linkStyle\s+default\s+/.test(line)
     );
 
     // --------------------------------------------------------
-    // 2. DEFINE COLORS
+    // 2. DEFINE COLORS (Proven Config)
     // --------------------------------------------------------
-    const isDarkText = mode === 'dark';
+    // Text: White (#ffffff)
+    // Background: Dark Gray (#1a1a1a) (Better than pure black for readability)
+    // Lines: Medium/Dark Gray (#333333) (Visible on white/transparent canvas)
 
     const colors = {
-        // Text Color: Black or White
-        text: isDarkText ? '#000000' : '#ffffff',
-        // Background for Label: White or Black
-        bg: isDarkText ? '#ffffff' : '#1a1a1a',
-        // Line Color: ALWAYS Dark/Visible (unless user really wants white lines on dark bg)
-        // Since the user is complaining about disappearing lines, we stick to safe Dark Gray.
-        // Even for "Light Text" mode (White text), we usually want the lines to be visible on the canvas.
-        // If the canvas is white, lines must be dark.
+        text: '#ffffff',
+        bg: '#1a1a1a',
         line: '#333333'
     };
 
     // --------------------------------------------------------
-    // 3. CONSTRUCT CSS (The Heavy Hammer)
+    // 3. CONSTRUCT CSS (The Nuclear Option)
     // --------------------------------------------------------
-    // We explicitly target every known permutation of Mermaid label classes.
-    // SVG text uses 'fill', HTML text uses 'color'.
-
     const cssRule = `
         /* HTML Labels */
         .edgeLabel { color: ${colors.text} !important; opacity: 1 !important; }
         .edgeLabel span { background-color: ${colors.bg} !important; color: ${colors.text} !important; }
         .edgeLabel div { background-color: ${colors.bg} !important; color: ${colors.text} !important; }
+        .edgeLabel p { background-color: ${colors.bg} !important; color: ${colors.text} !important; }
+        
+        /* Wildcard for HTML children (The Fixer) */
+        .edgeLabel * { color: ${colors.text} !important; background-color: transparent; }
+        .edgeLabel span, .edgeLabel div { background-color: ${colors.bg} !important; }
         
         /* SVG Labels */
         g.edgeLabels text { fill: ${colors.text} !important; color: ${colors.text} !important; }
@@ -85,10 +85,9 @@ export const fixEdgeVisibility = (code, mode = 'dark') => {
     newLines.unshift(directive);
 
     // --------------------------------------------------------
-    // 4. CONSTRUCT LINKSTYLE (Line Visibility)
+    // 4. CONSTRUCT LINKSTYLE (Redundancy)
     // --------------------------------------------------------
-    // Explicitly paint lines with the safe line color
-
+    // Explicitly set stroke to ensure visibility
     const linkStyle = `linkStyle default stroke:${colors.line},stroke-width:1px,fill:none;`;
 
     // Insert LinkStyle at BOTTOM
@@ -102,24 +101,17 @@ export const fixEdgeVisibility = (code, mode = 'dark') => {
 };
 
 /**
- * Applies high contrast to node text.
+ * Resets any visibility fixes by removing the injected lines.
+ * 
+ * @param {string} code 
+ * @returns {string} 
  */
-export const fixNodeVisibility = (code, mode = 'dark') => {
-    const lines = code.split('\n');
-    let newLines = [...lines];
-
-    const color = mode === 'dark' ? '#000000' : '#ffffff';
-    const fill = mode === 'dark' ? '#ffffff' : '#333333';
-
-    const directive = `classDef default fill:${fill},stroke:${color},color:${color};`;
-
-    newLines = newLines.filter(l => !/^\s*classDef\s+default\s/.test(l));
-
-    let insertIdx = newLines.length;
-    while (insertIdx > 0 && newLines[insertIdx - 1].trim() === '') {
-        insertIdx--;
-    }
-    newLines.splice(insertIdx, 0, directive);
-
-    return newLines.join('\n');
+export const resetVisibility = (code) => {
+    if (!code) return code;
+    return code.split('\n')
+        .filter(line =>
+            !line.trim().startsWith('%%{init:') &&
+            !/^\s*(linkStyle|classDef)\s+default/.test(line)
+        )
+        .join('\n');
 };

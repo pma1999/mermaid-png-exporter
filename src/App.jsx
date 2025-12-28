@@ -323,6 +323,7 @@ export default function App() {
             isRendering={isRendering}
             errorInfo={errorInfo}
             code={code}
+            onCodeChange={setCode}
             onAutoFix={handleAutoFix}
             isMobile={isMobile}
           />
@@ -345,6 +346,7 @@ export default function App() {
         isRendering={isRendering}
         errorInfo={errorInfo}
         code={code}
+        onCodeChange={setCode}
         onAutoFix={handleAutoFix}
         isMobile={false}
         isTablet={isTablet}

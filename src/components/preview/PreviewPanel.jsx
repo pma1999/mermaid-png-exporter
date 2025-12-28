@@ -1,6 +1,7 @@
 import { useTheme } from '../../hooks/useTheme';
 import { useLanguage } from '../../hooks/useLanguage';
 import { ErrorDisplay } from '../error';
+import { VisibilityControls } from './VisibilityControls';
 
 /**
  * Panel de vista previa del diagrama (Responsive)
@@ -9,6 +10,7 @@ import { ErrorDisplay } from '../error';
  * @param {boolean} props.isRendering - Estado de renderizado
  * @param {Object} props.errorInfo - Información del error
  * @param {string} props.code - Código actual
+ * @param {Function} props.onCodeChange - Handler para cambiar código
  * @param {Function} props.onAutoFix - Handler de auto-fix
  * @param {boolean} props.isMobile - Is mobile viewport
  * @param {boolean} props.isTablet - Is tablet viewport
@@ -18,6 +20,7 @@ export function PreviewPanel({
     isRendering,
     errorInfo,
     code,
+    onCodeChange,
     onAutoFix,
     isMobile = false,
     isTablet = false,
@@ -102,6 +105,9 @@ export function PreviewPanel({
                     {t('preview.title')}
                     {isRendering && <span style={styles.renderingDot} />}
                 </span>
+
+                {/* Visibility Controls */}
+                <VisibilityControls code={code} onCodeChange={onCodeChange} />
             </div>
 
             <div style={styles.container}>

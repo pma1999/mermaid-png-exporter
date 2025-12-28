@@ -45,6 +45,14 @@ export const es = {
         changesPreview: 'Ver cambios que se aplicarán',
         fixTooltip: 'Corregir automáticamente todos los problemas detectados'
     },
+    visibility: {
+        title: 'Visibilidad',
+        fixEdgesDark: 'Texto de enlaces oscuro',
+        fixEdgesLight: 'Texto de enlaces claro',
+        fixNodesDark: 'Texto de nodos oscuro',
+        reset: 'Resetear estilos',
+        tooltip: 'Herramientas de Visibilidad'
+    },
     examples: {
         flowchart: `flowchart LR
     subgraph Entrada

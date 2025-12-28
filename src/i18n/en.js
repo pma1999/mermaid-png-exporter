@@ -45,6 +45,14 @@ export const en = {
         changesPreview: 'View changes to apply',
         fixTooltip: 'Automatically fix all detected issues'
     },
+    visibility: {
+        title: 'Visibility',
+        fixEdgesDark: 'Dark Edge Text',
+        fixEdgesLight: 'Light Edge Text',
+        fixNodesDark: 'Dark Node Text',
+        reset: 'Reset Styles',
+        tooltip: 'Visibility Tools'
+    },
     examples: {
         flowchart: `flowchart LR
     subgraph Input

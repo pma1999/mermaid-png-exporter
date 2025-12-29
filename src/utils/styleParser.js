@@ -208,36 +208,24 @@ const estimateLightnessDelta = (currentContrast, targetContrast) => {
 };
 
 /**
- * Find optimal color by adjusting lightness while preserving hue and saturation
- * Uses binary search to find the MINIMUM change needed for MAXIMUM contrast
- * @param {string} hexColor - Original hex color
+ * Search in one direction for optimal lightness
+ * @param {{h: number, s: number, l: number}} hsl - Original HSL
  * @param {string} targetHex - Color to contrast against
- * @param {boolean} makeDarker - Whether to make darker (true) or lighter (false)
- * @returns {{hex: string, ratio: number, deltaL: number}}
+ * @param {boolean} goLighter - Direction (true = lighter, false = darker)
+ * @param {number} originalL - Original lightness for deltaL calculation
+ * @returns {Array<{l: number, hex: string, ratio: number, deltaL: number}>}
  */
-const findOptimalLightness = (hexColor, targetHex, makeDarker) => {
-    const rgb = parseColor(hexColor);
-    const targetRGB = parseColor(targetHex);
-    if (!rgb || !targetRGB) return { hex: hexColor, ratio: 1, deltaL: 100 };
-
-    const hsl = rgbToHsl(rgb);
-    const originalL = hsl.l;
-
-    // Fine-grained search for optimal lightness
-    // Goal: Find minimum deltaL that achieves MAXIMUM viable contrast
-    const direction = makeDarker ? -1 : 1;
-    const limit = makeDarker ? 0 : 100;
-
-    let bestHex = hexColor;
-    let bestRatio = getContrastRatio(hexColor, targetHex).ratio;
-    let bestDeltaL = 0;
-    let bestL = originalL;
-
-    // Phase 1: Coarse search to find region with good contrast (step 5%)
+const searchDirection = (hsl, targetHex, goLighter, originalL) => {
     const candidates = [];
-    for (let step = 0; step <= 100; step += 5) {
+    const direction = goLighter ? 1 : -1;
+
+    // Search from AFTER original (step=2) to limit - we want IMPROVEMENTS only
+    for (let step = 2; step <= 100; step += 2) {
         const newL = Math.max(0, Math.min(100, originalL + (direction * step)));
-        if ((makeDarker && newL > originalL) || (!makeDarker && newL < originalL)) continue;
+
+        // Skip if going wrong direction
+        if (goLighter && newL < originalL) continue;
+        if (!goLighter && newL > originalL) continue;
 
         const newRGB = hslToRgb(hsl.h, hsl.s, newL);
         const newHex = rgbToHex(newRGB);
@@ -251,73 +239,93 @@ const findOptimalLightness = (hexColor, targetHex, makeDarker) => {
         });
 
         // Stop if we hit the limit
-        if ((makeDarker && newL <= 0) || (!makeDarker && newL >= 100)) break;
+        if (newL <= 0 || newL >= 100) break;
     }
 
-    // Phase 2: Find optimal candidate (high contrast with low change)
-    // Prioritize AAA (7.0+), then AA (4.5+) with minimum delta
-    candidates.sort((a, b) => {
-        // Both meet AAA? Pick smallest change
-        if (a.ratio >= 7.0 && b.ratio >= 7.0) return a.deltaL - b.deltaL;
-        // Only one meets AAA? Pick that one
-        if (a.ratio >= 7.0) return -1;
-        if (b.ratio >= 7.0) return 1;
-        // Both meet AA? Pick smallest change
-        if (a.ratio >= 4.5 && b.ratio >= 4.5) return a.deltaL - b.deltaL;
-        // Only one meets AA? Pick that one
-        if (a.ratio >= 4.5) return -1;
-        if (b.ratio >= 4.5) return 1;
-        // Neither meets AA? Pick highest ratio
-        return b.ratio - a.ratio;
+    return candidates;
+};
+
+/**
+ * Find optimal color by searching BOTH directions and picking the best
+ * This ensures we always find the optimal solution regardless of starting point
+ * @param {string} hexColor - Original hex color
+ * @param {string} targetHex - Color to contrast against
+ * @returns {{hex: string, ratio: number, deltaL: number}}
+ */
+export const findOptimalLightness = (hexColor, targetHex) => {
+    const rgb = parseColor(hexColor);
+    const targetRGB = parseColor(targetHex);
+    if (!rgb || !targetRGB) return { hex: hexColor, ratio: 1, deltaL: 100 };
+
+    const hsl = rgbToHsl(rgb);
+    const originalL = hsl.l;
+
+    // Search BOTH directions
+    const lighterCandidates = searchDirection(hsl, targetHex, true, originalL);
+    const darkerCandidates = searchDirection(hsl, targetHex, false, originalL);
+    const allCandidates = [...lighterCandidates, ...darkerCandidates];
+
+    if (allCandidates.length === 0) {
+        return { hex: hexColor, ratio: getContrastRatio(hexColor, targetHex).ratio, deltaL: 0 };
+    }
+
+    // Sort by: AAA first, then AA, then by smallest deltaL within each tier
+    allCandidates.sort((a, b) => {
+        const aLevel = a.ratio >= 7.0 ? 2 : a.ratio >= 4.5 ? 1 : 0;
+        const bLevel = b.ratio >= 7.0 ? 2 : b.ratio >= 4.5 ? 1 : 0;
+
+        // Higher level always wins
+        if (aLevel !== bLevel) return bLevel - aLevel;
+
+        // Same level: smaller change wins
+        return a.deltaL - b.deltaL;
     });
 
-    if (candidates.length > 0) {
-        const best = candidates[0];
-        bestHex = best.hex;
-        bestRatio = best.ratio;
-        bestDeltaL = best.deltaL;
-        bestL = best.l;
+    // Get the best candidate
+    let best = allCandidates[0];
+
+    // Fine-tune around best with 1% steps to find exact optimal
+    const fineCandidates = [];
+    for (let fineL = Math.max(0, best.l - 5); fineL <= Math.min(100, best.l + 5); fineL += 1) {
+        const newRGB = hslToRgb(hsl.h, hsl.s, fineL);
+        const newHex = rgbToHex(newRGB);
+        const contrast = getContrastRatio(newHex, targetHex);
+        const deltaL = Math.abs(fineL - originalL);
+
+        fineCandidates.push({ l: fineL, hex: newHex, ratio: contrast.ratio, deltaL });
     }
 
-    // Phase 3: Fine-tune around best candidate for exact optimal (step 1%)
-    if (bestRatio >= 4.5) {
-        for (let fineStep = -4; fineStep <= 4; fineStep++) {
-            const newL = Math.max(0, Math.min(100, bestL + fineStep));
-            const newRGB = hslToRgb(hsl.h, hsl.s, newL);
-            const newHex = rgbToHex(newRGB);
-            const contrast = getContrastRatio(newHex, targetHex);
-            const deltaL = Math.abs(newL - originalL);
+    // Re-sort fine candidates
+    fineCandidates.sort((a, b) => {
+        const aLevel = a.ratio >= 7.0 ? 2 : a.ratio >= 4.5 ? 1 : 0;
+        const bLevel = b.ratio >= 7.0 ? 2 : b.ratio >= 4.5 ? 1 : 0;
+        if (aLevel !== bLevel) return bLevel - aLevel;
+        return a.deltaL - b.deltaL;
+    });
 
-            // Accept if: same or better level with less change
-            const currentLevel = bestRatio >= 7.0 ? 2 : bestRatio >= 4.5 ? 1 : 0;
-            const newLevel = contrast.ratio >= 7.0 ? 2 : contrast.ratio >= 4.5 ? 1 : 0;
-
-            if (newLevel > currentLevel || (newLevel === currentLevel && deltaL < bestDeltaL)) {
-                bestHex = newHex;
-                bestRatio = contrast.ratio;
-                bestDeltaL = deltaL;
-            }
-        }
+    if (fineCandidates.length > 0) {
+        best = fineCandidates[0];
     }
 
-    return { hex: bestHex, ratio: bestRatio, deltaL: bestDeltaL };
+    return { hex: best.hex, ratio: best.ratio, deltaL: best.deltaL };
 };
 
 /**
  * Intelligent contrast fix - analyzes both options and chooses the best
+ * Works for both fixing FAIL and improving AA to AAA
  * @param {string} fillColor - Background/fill color
  * @param {string} textColor - Text/foreground color
- * @returns {{strategy: 'text' | 'fill', newColor: string, reason: string, improvement: {from: number, to: number}}}
+ * @returns {{strategy: 'text' | 'fill' | 'none', newColor: string, reason: string, improvement: {from: number, to: number}}}
  */
 export const smartContrastFix = (fillColor, textColor) => {
     const currentContrast = getContrastRatio(textColor, fillColor);
 
-    // Already good? No fix needed
-    if (currentContrast.level !== 'FAIL') {
+    // Already AAA? No improvement needed
+    if (currentContrast.level === 'AAA') {
         return {
             strategy: 'none',
             newColor: null,
-            reason: 'Contrast already meets WCAG AA',
+            reason: 'Contrast already meets WCAG AAA',
             improvement: { from: currentContrast.ratio, to: currentContrast.ratio }
         };
     }
@@ -333,39 +341,11 @@ export const smartContrastFix = (fillColor, textColor) => {
         };
     }
 
-    const fillLuminance = getRelativeLuminance(fillRGB);
-    const textLuminance = getRelativeLuminance(textRGB);
+    // Strategy 1: Adjust text color (bidirectional search finds optimal direction)
+    const textFix = findOptimalLightness(textColor, fillColor);
 
-    // Determine current state
-    const fillIsDark = fillLuminance < 0.5;
-    const textIsDark = textLuminance < 0.5;
-    const bothDark = fillIsDark && textIsDark;
-    const bothLight = !fillIsDark && !textIsDark;
-
-    // Strategy 1: Adjust text color (preserve hue if possible)
-    let textFix;
-    if (bothDark) {
-        // Both dark → make text lighter
-        textFix = findOptimalLightness(textColor, fillColor, false);
-    } else if (bothLight) {
-        // Both light → make text darker
-        textFix = findOptimalLightness(textColor, fillColor, true);
-    } else {
-        // Already contrasting, just needs more separation
-        textFix = findOptimalLightness(textColor, fillColor, textIsDark);
-    }
-
-    // Strategy 2: Adjust fill color (preserve hue)
-    let fillFix;
-    if (bothDark) {
-        // Both dark → make fill lighter
-        fillFix = findOptimalLightness(fillColor, textColor, false);
-    } else if (bothLight) {
-        // Both light → make fill darker
-        fillFix = findOptimalLightness(fillColor, textColor, true);
-    } else {
-        fillFix = findOptimalLightness(fillColor, textColor, fillIsDark);
-    }
+    // Strategy 2: Adjust fill color (bidirectional search finds optimal direction)
+    const fillFix = findOptimalLightness(fillColor, textColor);
 
     // Strategy 3: Simple black/white text (always works)
     const simpleTextColor = suggestTextColor(fillColor);
@@ -379,8 +359,12 @@ export const smartContrastFix = (fillColor, textColor) => {
 
     const strategies = [];
 
-    // Evaluate text adjustment
-    if (textFix.ratio >= 4.5) {
+    // Current WCAG level
+    const currentLevel = currentContrast.ratio >= 7.0 ? 2 : currentContrast.ratio >= 4.5 ? 1 : 0;
+
+    // Evaluate text adjustment - only add if it IMPROVES the WCAG level
+    const textLevel = textFix.ratio >= 7.0 ? 2 : textFix.ratio >= 4.5 ? 1 : 0;
+    if (textLevel > currentLevel) {
         strategies.push({
             strategy: 'text',
             newColor: textFix.hex,
@@ -390,8 +374,9 @@ export const smartContrastFix = (fillColor, textColor) => {
         });
     }
 
-    // Evaluate fill adjustment (slightly penalized as it's more invasive)
-    if (fillFix.ratio >= 4.5) {
+    // Evaluate fill adjustment - only add if it IMPROVES the WCAG level
+    const fillLevel = fillFix.ratio >= 7.0 ? 2 : fillFix.ratio >= 4.5 ? 1 : 0;
+    if (fillLevel > currentLevel) {
         strategies.push({
             strategy: 'fill',
             newColor: fillFix.hex,
@@ -401,17 +386,30 @@ export const smartContrastFix = (fillColor, textColor) => {
         });
     }
 
-    // Simple text fix (always available as fallback)
-    strategies.push({
-        strategy: 'text',
-        newColor: simpleTextColor,
-        score: 50, // High score = last resort
-        reason: `Changed text to ${simpleTextColor === '#ffffff' ? 'white' : 'black'}`,
-        improvement: { from: currentContrast.ratio, to: simpleContrast.ratio }
-    });
+    // Simple text fix - only if it's an improvement
+    if (simpleContrast.ratio > currentContrast.ratio + 0.5) {
+        strategies.push({
+            strategy: 'text',
+            newColor: simpleTextColor,
+            score: 50, // High score = last resort
+            reason: `Changed text to ${simpleTextColor === '#ffffff' ? 'white' : 'black'}`,
+            improvement: { from: currentContrast.ratio, to: simpleContrast.ratio }
+        });
+    }
 
     // Choose best strategy (lowest score)
     strategies.sort((a, b) => a.score - b.score);
+
+    // If no improvement strategies found, return no change
+    if (strategies.length === 0) {
+        return {
+            strategy: 'none',
+            newColor: null,
+            reason: 'Already at maximum achievable contrast',
+            improvement: { from: currentContrast.ratio, to: currentContrast.ratio }
+        };
+    }
+
     const best = strategies[0];
 
     return {
@@ -813,6 +811,48 @@ export const autoFixAllStyles = (code) => {
     });
 
     return { code: newCode, fixes };
+};
+
+/**
+ * Improve all AA-level styles to AAA
+ * @param {string} code - Mermaid code
+ * @returns {{code: string, improvements: Array<{id: string, type: string, oldColor: string, newColor: string, improvement: {from: number, to: number}}>}}
+ */
+export const improveAllStyles = (code) => {
+    const allStyles = analyzeAllStyles(code);
+    const improvements = [];
+    let newCode = code;
+
+    allStyles.forEach((style) => {
+        const contrast = getContrastRatio(style.color, style.fill);
+
+        // Only target AA-level styles (4.5-7.0 ratio)
+        if (contrast.level === 'AA') {
+            const smartFix = smartContrastFix(style.fill, style.color);
+
+            if (smartFix.strategy === 'none') return;
+            if (smartFix.improvement.to <= contrast.ratio) return; // No improvement
+
+            // Apply the improvement
+            const updateProps = smartFix.strategy === 'fill'
+                ? { fill: smartFix.newColor }
+                : { color: smartFix.newColor };
+
+            newCode = updateStyle(newCode, style.id, style.type, updateProps);
+
+            improvements.push({
+                id: style.id,
+                type: style.type,
+                strategy: smartFix.strategy,
+                reason: smartFix.reason,
+                oldColor: smartFix.strategy === 'fill' ? style.fill : style.color,
+                newColor: smartFix.newColor,
+                improvement: smartFix.improvement,
+            });
+        }
+    });
+
+    return { code: newCode, improvements };
 };
 
 // =============================================================================

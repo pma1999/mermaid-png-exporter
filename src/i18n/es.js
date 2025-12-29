@@ -57,6 +57,7 @@ export const es = {
         sampleText: 'Texto de Ejemplo',
         autoFix: 'Corregir',
         fixAll: 'Corregir Todo',
+        improveAll: '→ AAA',
         apply: 'Aplicar',
         fill: 'Relleno',
         textColor: 'Texto',

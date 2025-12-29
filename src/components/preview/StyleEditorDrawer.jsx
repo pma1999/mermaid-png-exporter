@@ -7,6 +7,7 @@ import {
     smartContrastFix,
     updateStyle,
     autoFixAllStyles,
+    improveAllStyles,
     COLOR_PALETTES,
 } from '../../utils/styleParser';
 
@@ -38,8 +39,12 @@ export function StyleEditorDrawer({ isOpen, onClose, code, onCodeChange }) {
         return () => document.removeEventListener('keydown', handleEscape);
     }, [isOpen, onClose]);
 
-    // Calculate issues count
+    // Calculate issues count (FAIL) and improvable count (AA)
     const issueCount = allStyles.filter(s => s.needsFix).length;
+    const improvableCount = allStyles.filter(s => {
+        const contrast = getContrastRatio(s.color, s.fill);
+        return contrast.level === 'AA';
+    }).length;
 
     // Handle auto-fix single style using SMART algorithm
     const handleFixStyle = (styleItem) => {
@@ -65,6 +70,14 @@ export function StyleEditorDrawer({ isOpen, onClose, code, onCodeChange }) {
     const handleFixAll = () => {
         const { code: newCode, fixes } = autoFixAllStyles(code);
         if (fixes.length > 0) {
+            onCodeChange(newCode);
+        }
+    };
+
+    // Handle improve all (AA → AAA)
+    const handleImproveAll = () => {
+        const { code: newCode, improvements } = improveAllStyles(code);
+        if (improvements.length > 0) {
             onCodeChange(newCode);
         }
     };
@@ -453,6 +466,7 @@ export function StyleEditorDrawer({ isOpen, onClose, code, onCodeChange }) {
                             letterSpacing: '0.05em',
                         }}>{typeBadge.text}</span>
                     </div>
+                    {/* Fix button for FAIL, Improve button for AA */}
                     {level === 'FAIL' && (
                         <button
                             style={styles.fixButton}
@@ -462,6 +476,22 @@ export function StyleEditorDrawer({ isOpen, onClose, code, onCodeChange }) {
                                 <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
                             </svg>
                             {t('styleEditor.autoFix')}
+                        </button>
+                    )}
+                    {level === 'AA' && (
+                        <button
+                            style={{
+                                ...styles.fixButton,
+                                background: 'rgba(99, 102, 241, 0.15)',
+                                border: '1px solid rgba(99, 102, 241, 0.3)',
+                                color: '#6366f1',
+                            }}
+                            onClick={() => handleFixStyle(styleItem)}
+                        >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+                            </svg>
+                            → AAA
                         </button>
                     )}
                 </div>
@@ -630,6 +660,22 @@ export function StyleEditorDrawer({ isOpen, onClose, code, onCodeChange }) {
                                     <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
                                 </svg>
                                 {t('styleEditor.fixAll')}
+                            </button>
+                        )}
+                        {improvableCount > 0 && (
+                            <button
+                                style={{
+                                    ...styles.actionButton,
+                                    background: 'rgba(99, 102, 241, 0.15)',
+                                    border: '1px solid rgba(99, 102, 241, 0.3)',
+                                    color: '#6366f1',
+                                }}
+                                onClick={handleImproveAll}
+                            >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+                                </svg>
+                                {t('styleEditor.improveAll')}
                             </button>
                         )}
                         <button

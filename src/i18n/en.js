@@ -57,6 +57,7 @@ export const en = {
         sampleText: 'Sample Text',
         autoFix: 'Fix',
         fixAll: 'Fix All',
+        improveAll: '→ AAA',
         apply: 'Apply',
         fill: 'Fill',
         textColor: 'Text',

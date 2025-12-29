@@ -1,5 +1,5 @@
 /**
- * Sistema de Auto-corrección de código Mermaid v2.3
+ * Sistema de Auto-corrección de código Mermaid v2.4
  * 
  * PRINCIPIO FUNDAMENTAL: "First, do no harm"
  * - Solo modificar nodos que CLARAMENTE tienen problemas
@@ -13,6 +13,7 @@
  * v2.1 - Fix para subgraph titles con paréntesis
  * v2.2 - Fix para comillas internas que causan error STR (string literal)
  * v2.3 - Fix para sintaxis inválida después de nodos: ]:(text), }:(text), etc.
+ * v2.4 - Fix para edge labels con paréntesis: -->|texto (problemático)| 
  */
 
 // =============================================================================
@@ -352,6 +353,87 @@ const fixInvalidTrailingSyntax = (line) => {
         wasModified,
         original: allOriginal.join(', '),
         removed: allRemoved.join(', ')
+    };
+};
+
+// =============================================================================
+// FIX PARA EDGE LABELS
+// =============================================================================
+
+/**
+ * Detecta y corrige edge labels con paréntesis o comillas sin entrecomillar.
+ * 
+ * Sintaxis de edge labels en Mermaid:
+ *   A -->|texto| B
+ *   A --o|texto| B
+ *   A -.->|texto| B
+ *   A ==>|texto| B
+ *   A -->|"texto entrecomillado"| B
+ * 
+ * El problema ocurre cuando hay paréntesis () o comillas internas dentro 
+ * del texto del label sin entrecomillar, porque Mermaid los interpreta 
+ * como sintaxis especial (nodo redondo, string literal, etc.).
+ * 
+ * @param {string} line - Línea a procesar
+ * @returns {{fixed: string, fixes: Array<{original: string, fixed: string, start: number, end: number}>}}
+ */
+const fixEdgeLabels = (line) => {
+    const fixes = [];
+
+    // Regex para encontrar edge labels: |texto|
+    // Captura el pipe de apertura, el contenido, y el pipe de cierre
+    // Soporta todos los tipos de flechas que preceden al label
+    // 
+    // Pattern: (?:--|->|=>|-.->|--o|--x|<-->|o--|x--) seguido de un |...|
+    // Usamos un approach más simple: buscar todos los |...| que no estén 
+    // al inicio de línea (para no confundir con otras sintaxis)
+
+    // Regex explicación:
+    // (-->|--o|--x|-.->|==>|--) - Tipos de flecha (capturamos para mantener)
+    // \s*                       - Espacios opcionales
+    // \|                        - Pipe de apertura
+    // ([^|]+)                   - Contenido del label (sin pipes)
+    // \|                        - Pipe de cierre
+    const edgeLabelPattern = /(-->|--o|--x|-\.->|==>|--|<-->|o--|x--)\s*\|([^|]+)\|/g;
+
+    let match;
+    while ((match = edgeLabelPattern.exec(line)) !== null) {
+        const [fullMatch, arrow, labelContent] = match;
+        const start = match.index;
+        const end = start + fullMatch.length;
+
+        // Si el contenido ya está entrecomillado, no hacer nada
+        if (isFullyQuoted(labelContent.trim())) {
+            continue;
+        }
+
+        // Verificar si tiene contenido problemático
+        if (hasProblematicContent(labelContent)) {
+            // Entrecomillar el contenido del label
+            const quotedContent = safeQuote(labelContent);
+            const fixedMatch = `${arrow}|${quotedContent}|`;
+
+            fixes.push({
+                original: fullMatch,
+                fixed: fixedMatch,
+                start: start,
+                end: end,
+                type: 'edge_label'
+            });
+        }
+    }
+
+    // Aplicar fixes de derecha a izquierda
+    let result = line;
+    const sortedFixes = [...fixes].sort((a, b) => b.start - a.start);
+
+    for (const fix of sortedFixes) {
+        result = result.slice(0, fix.start) + fix.fixed + result.slice(fix.end);
+    }
+
+    return {
+        fixed: result,
+        fixes: fixes
     };
 };
 
@@ -735,6 +817,21 @@ export const autoFixMermaidCode = (code) => {
             currentLine = trailingResult.fixed;
         }
 
+        // FIX ESPECIAL: Edge labels con paréntesis o comillas
+        // Patrones como -->|texto (problemático)| causan parse error "got PS"
+        const edgeLabelResult = fixEdgeLabels(currentLine);
+
+        if (edgeLabelResult.fixes.length > 0) {
+            edgeLabelResult.fixes.forEach(fix => {
+                allFixes.push({
+                    line: index + 1,
+                    original: `edge label: ${fix.original}`,
+                    fixed: `edge label: ${fix.fixed}`
+                });
+            });
+            currentLine = edgeLabelResult.fixed;
+        }
+
         // Parsear y corregir nodos en esta línea
         const lineFixes = parseAndFixNodes(currentLine);
 
@@ -800,7 +897,20 @@ export const analyzeCode = (code) => {
             return;
         }
 
-        // Usar el mismo parser para detectar problemas
+        // Detectar problemas en edge labels
+        const edgeLabelResult = fixEdgeLabels(line);
+        if (edgeLabelResult.fixes.length > 0) {
+            edgeLabelResult.fixes.forEach(fix => {
+                issues.push({
+                    line: index + 1,
+                    type: 'unquoted_edge_label',
+                    content: fix.original,
+                    description: 'Edge label con paréntesis o comillas sin entrecomillar'
+                });
+            });
+        }
+
+        // Usar el mismo parser para detectar problemas en nodos
         const lineFixes = parseAndFixNodes(line);
 
         if (lineFixes.length > 0) {

@@ -33,7 +33,7 @@ const SPECIAL_SHAPES_DETECT = [
  */
 const hasProblematicContent = (content) => {
     const trimmed = content.trim();
-    
+
     // Si está completamente entrecomillado con comillas al inicio Y fin, no hay problema
     if (/^"[^]*"$/.test(trimmed) && (trimmed.match(/"/g) || []).length === 2) {
         return false;
@@ -67,9 +67,16 @@ const hasProblematicContent = (content) => {
  */
 export const ERROR_PATTERNS = [
     {
-        // Error principal: Paréntesis/comillas en nodos básicos y formas especiales
+        // Error principal: Paréntesis/comillas en nodos básicos, formas especiales y edge labels
         pattern: new RegExp(`Expecting.*(${SPECIAL_SHAPE_TOKENS.map(t => `'${t}'`).join('|')})|got '(PS|STR)'`, 'i'),
         detect: (code) => {
+            // Detectar problemas en edge labels (|texto con (paréntesis)|)
+            const edgeLabelRegex = /\|([^|]+)\|/g;
+            let match;
+            while ((match = edgeLabelRegex.exec(code)) !== null) {
+                if (hasProblematicContent(match[1])) return true;
+            }
+
             // Detectar problemas en formas especiales (trapezoides, stadiums, etc.)
             for (const shape of SPECIAL_SHAPES_DETECT) {
                 const pattern = new RegExp(`\\w+\\s*${shape.openEsc}([^]*?)${shape.closeEsc}`, 'g');
@@ -81,7 +88,6 @@ export const ERROR_PATTERNS = [
 
             // Detectar problemas en nodos básicos
             const nodeRegex = /\w+\s*(?:\[([^\]]+)\]|\{([^\}]+)\}|\(([^\(\)\[\]]+)\))/g;
-            let match;
             while ((match = nodeRegex.exec(code)) !== null) {
                 const content = match[1] || match[2] || match[3];
                 if (!content) continue;
@@ -146,13 +152,25 @@ const findActualErrorLine = (errorMessage, code) => {
         }
     }
 
-    // Método 2: Buscar líneas que tengan el patrón problemático (incluyendo formas especiales)
+    // Método 2: Buscar líneas que tengan el patrón problemático (incluyendo formas especiales y edge labels)
     const tokenPattern = new RegExp(`Expecting.*(${SPECIAL_SHAPE_TOKENS.map(t => `'${t}'`).join('|')})|got '(PS|STR)'`, 'i');
     if (tokenPattern.test(errorMessage)) {
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
 
-            // Primero verificar formas especiales
+            // Primero verificar edge labels
+            const edgeLabelRegex = /\|([^|]+)\|/g;
+            let edgeMatch;
+            while ((edgeMatch = edgeLabelRegex.exec(line)) !== null) {
+                if (hasProblematicContent(edgeMatch[1])) {
+                    return {
+                        lineNumber: i + 1,
+                        lineContent: line
+                    };
+                }
+            }
+
+            // Luego verificar formas especiales
             for (const shape of SPECIAL_SHAPES_DETECT) {
                 const pattern = new RegExp(`\\w+\\s*${shape.openEsc}([^]*?)${shape.closeEsc}`, 'g');
                 let match;

@@ -473,6 +473,8 @@ const parseAndFixNodes = (line) => {
         { open: '[/', close: '\\]', name: 'parallelogram' },
         // Parallelogram alt: [\ ... /]
         { open: '[\\', close: '/]', name: 'parallelogram_alt' },
+        // Flag/Asymmetric: > ... ] (nota: sintaxis única id>text])
+        { open: '>', close: ']', name: 'flag' },
     ];
 
     // Procesar formas especiales primero
@@ -508,6 +510,55 @@ const parseAndFixNodes = (line) => {
                     line[start + nodeId.length + 1] === '(' &&
                     line[start + nodeId.length + 2] === '(') {
                     continue; // Es double_circle, saltar
+                }
+            }
+
+            // =====================================================================
+            // FIX ESPECIAL PARA NODOS FLAG: id>["text"] → id>"text"]
+            // Los usuarios a menudo escriben >["texto"] cuando la sintaxis correcta
+            // es >"texto"]. Detectamos y corregimos este patrón común.
+            // 
+            // IMPORTANTE: El regex captura:
+            //   - content: ["⚠️ ART..."  (el contenido entre > y ])
+            //   - closeDelim: ]
+            // Por lo tanto, el contenido empieza con [" y termina con "
+            // =====================================================================
+            if (shape.name === 'flag') {
+                const trimmedContent = content.trim();
+
+                // Patrón principal: contenido empieza con [" y termina con "
+                // Ejemplo: >["texto ABC"] → contenido es ["texto ABC"
+                if (trimmedContent.startsWith('["') && trimmedContent.endsWith('"')) {
+                    // Extraer el contenido real: quitar [" del inicio y " del final
+                    const innerContent = trimmedContent.slice(2, -1);
+                    // Escapar comillas internas si las hay
+                    const escapedContent = innerContent.replace(/"/g, '&quot;');
+                    const fixed = `${nodeId}>"${escapedContent}"]${modifier || ''}`;
+
+                    fixes.push({
+                        original: fullMatch,
+                        fixed: fixed,
+                        start: start,
+                        end: end
+                    });
+                    continue; // Ya procesado, no seguir con el flujo normal
+                }
+
+                // Patrón secundario: solo [ extra al inicio (sin comillas)
+                // Ejemplo: >[texto] → contenido es [texto
+                if (trimmedContent.startsWith('[') && !trimmedContent.startsWith('["')) {
+                    // El usuario puso un [ extra, quitarlo y entrecomillar
+                    const cleanContent = trimmedContent.slice(1);
+                    const quoted = safeQuote(cleanContent);
+                    const fixed = `${nodeId}>${quoted}]${modifier || ''}`;
+
+                    fixes.push({
+                        original: fullMatch,
+                        fixed: fixed,
+                        start: start,
+                        end: end
+                    });
+                    continue;
                 }
             }
 
@@ -945,6 +996,8 @@ export const detectSpecialShapes = (code) => {
         { name: 'hexagon', pattern: /\{\{/ },
         { name: 'trapezoid', pattern: /\[\// },
         { name: 'trapezoid_alt', pattern: /\[\\/ },
+        // Flag/Asymmetric: id>text] - word followed by >
+        { name: 'flag', pattern: /\w>/ },
     ];
 
     for (const { name, pattern } of patterns) {

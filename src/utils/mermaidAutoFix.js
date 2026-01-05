@@ -329,9 +329,10 @@ const detectLeakedContent = (line, afterNodeIndex) => {
         if (/^\s*(--|==|o--|x--|<--|-\.)/.test(content)) return null;
 
         // Si parece el inicio de otro nodo (ID + apertura), abortar
-        // Ej: "NodeA :::style" -> OK (estilo de NodeA si no fue capturado antes)
-        // Ej: " <br> NodeB[..." -> NO OK
-        if (/\b\w+\s*[\(\[\{\>]/.test(content)) return null;
+        // Excluir '>' de la detección para evitar conflictos con tags HTML como <br>
+        // Primero eliminamos tags HTML comunes de la verificación de "parece otro nodo"
+        let checkContent = content.replace(/<br\s*\/?>/gi, ' ');
+        if (/(^|[\s])\w+\s*[\(\[\{]/.test(checkContent)) return null;
 
         // Si es solo espacios, no hay leak real de contenido, solo estilo separado
         // Retornar solo el estilo para que se junte
@@ -352,7 +353,8 @@ const detectLeakedContent = (line, afterNodeIndex) => {
     if (matchLoose) {
         const content = matchLoose[1];
         // Verificar seguridad: no parece otro nodo
-        if (/\b\w+\s*[\(\[\{\>]/.test(content)) return null;
+        let checkContent = content.replace(/<br\s*\/?>/gi, ' ');
+        if (/(^|[\s])\w+\s*[\(\[\{]/.test(checkContent)) return null;
 
         return {
             leaked: content,
@@ -837,7 +839,7 @@ const parseAndFixNodes = (line) => {
             // =================================================================
             const leak = detectLeakedContent(line, totalEnd);
             if (leak) {
-                const mergedContent = content + leak.leaked;
+                const mergedContent = (content + leak.leaked).trim();
                 const finalStyle = leak.style || modifier || '';
 
                 // Siempre aplicar fix si hubo leak
@@ -898,7 +900,7 @@ const parseAndFixNodes = (line) => {
         // =================================================================
         const leak = detectLeakedContent(line, end);
         if (leak) {
-            const mergedContent = content + leak.leaked;
+            const mergedContent = (content + leak.leaked).trim();
             // IMPORTANTE: Eliminar espacios antes del modificador :::
             const existingMod = modifierWithSpace ? modifierWithSpace.trim() : '';
             const finalStyle = leak.style || existingMod || '';
@@ -978,7 +980,7 @@ const parseAndFixNodes = (line) => {
         // =================================================================
         const leak = detectLeakedContent(line, end);
         if (leak) {
-            const mergedContent = content + leak.leaked;
+            const mergedContent = (content + leak.leaked).trim();
             const finalStyle = leak.style || modifier || '';
 
             const quoted = safeQuote(mergedContent);

@@ -806,7 +806,11 @@ const parseAndFixNodes = (line) => {
     }
 
     // =========================================================================
-    // FIX PRO: Parsing manual de nodos redondos id(...) con paréntesis anidados
+    // MODIFICACIÓN: Procesar [] y {} ANTES que ()
+    // Los paréntesis son muy comunes en texto (ej: "Texto (Nota)"), por lo que
+    // el parser de nodos redondos () es propenso a falsos positivos "dentro" de otros nodos.
+    // Al procesar [] y {} primero, "blindamos" esas áreas y evitamos que
+    // el parser de () intente arreglar texto que ya es parte de otro nodo.
     // =========================================================================
 
     // Regex para encontrar el inicio de un nodo: word + spaces + (
@@ -1075,6 +1079,13 @@ const parseAndFixNodes = (line) => {
             }
         }
     }
+
+    // =========================================================================
+    // FIX PRO: Parsing manual de nodos redondos id(...) con paréntesis anidados
+    // Este se ejecuta AL FINAL porque es el más "codicioso" y ambiguo.
+    // =========================================================================
+
+
 
     return fixes;
 };

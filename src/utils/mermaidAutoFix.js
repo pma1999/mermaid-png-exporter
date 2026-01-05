@@ -684,11 +684,12 @@ const parseAndFixNodes = (line) => {
         }
     }
     // IMPORTANTE: Excluir formas especiales que ya fueron procesadas
-    const bracketRegex = /(\w+)\s*\[([^\]]+)\](:::?\w+)?/g;
+    // Regex actualizado: captura el modificador :::class incluso con espacios antes
+    const bracketRegex = /(\w+)\s*\[([^\]]+)\](\s*:::?\w+)?/g;
     let match;
 
     while ((match = bracketRegex.exec(line)) !== null) {
-        const [fullMatch, nodeId, content, modifier] = match;
+        const [fullMatch, nodeId, content, modifierWithSpace] = match;
         const start = match.index;
         const end = start + fullMatch.length;
 
@@ -713,7 +714,10 @@ const parseAndFixNodes = (line) => {
         // Solo corregir si tiene contenido problemático (paréntesis o comillas)
         if (hasProblematicContent(content)) {
             const quoted = safeQuote(content);
-            const fixed = `${nodeId}[${quoted}]${modifier || ''}`;
+            // IMPORTANTE: Eliminar espacios antes del modificador :::
+            // Algunos navegadores/versiones de Mermaid no aceptan "content"] :::class
+            const modifier = modifierWithSpace ? modifierWithSpace.trim() : '';
+            const fixed = `${nodeId}[${quoted}]${modifier}`;
 
             if (fixed !== fullMatch) {
                 fixes.push({

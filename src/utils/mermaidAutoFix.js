@@ -584,6 +584,47 @@ const fixEdgeLabels = (line) => {
 // =============================================================================
 
 /**
+ * Obtiene los rangos de la línea que están entrecomillados.
+ * Útil para evitar procesar "falsos nodos" que están dentro de strings.
+ * 
+ * @param {string} line 
+ * @returns {Array<{start: number, end: number}>}
+ */
+const getQuotedRanges = (line) => {
+    const ranges = [];
+    let inQuote = false;
+    let quoteChar = '';
+    let start = -1;
+
+    for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        const prevChar = i > 0 ? line[i - 1] : '';
+
+        if ((char === '"' || char === "'") && prevChar !== '\\') {
+            if (!inQuote) {
+                inQuote = true;
+                quoteChar = char;
+                start = i;
+            } else if (char === quoteChar) {
+                inQuote = false;
+                ranges.push({ start, end: i + 1 });
+            }
+        }
+    }
+    return ranges;
+};
+
+/**
+ * Verifica si un índice está dentro de algún rango entrecomillado
+ * @param {number} index 
+ * @param {Array<{start: number, end: number}>} ranges 
+ * @returns {boolean}
+ */
+const isInsideQuotes = (index, ranges) => {
+    return ranges.some(r => index > r.start && index < r.end);
+};
+
+/**
  * Extrae nodos de una línea usando parsing manual (no solo regex)
  * Esto es más robusto para casos complejos
  * 
@@ -592,6 +633,7 @@ const fixEdgeLabels = (line) => {
  */
 const parseAndFixNodes = (line) => {
     const fixes = [];
+    const quotedRanges = getQuotedRanges(line);
 
     // Patrones de formas especiales ordenados por longitud de delimitador (más largo primero)
     const shapePatterns = [
@@ -637,6 +679,9 @@ const parseAndFixNodes = (line) => {
             const [fullMatch, nodeId, openDelim, content, closeDelim, modifier] = match;
             const start = match.index;
             const end = start + fullMatch.length;
+
+            // Ignorar si el match empieza dentro de comillas (falso positivo)
+            if (isInsideQuotes(start, quotedRanges)) continue;
 
             // Verificar que no estamos dentro de otro match ya procesado
             const alreadyProcessed = fixes.some(f =>
@@ -771,6 +816,10 @@ const parseAndFixNodes = (line) => {
     while ((startMatch = startRegex.exec(line)) !== null) {
         const nodeId = startMatch[1];
         const openParenIndex = startMatch.index + startMatch[0].length - 1; // Index of '('
+        const matchStartIndex = startMatch.index;
+
+        // Ignorar si empieza dentro de comillas
+        if (isInsideQuotes(matchStartIndex, quotedRanges)) continue;
 
         // Verificar que NO es una forma especial
         // Formas especiales que empiezan con (: ((, (((, ([, (\
@@ -889,6 +938,9 @@ const parseAndFixNodes = (line) => {
         const start = match.index;
         const end = start + fullMatch.length;
 
+        // Ignorar si empieza dentro de comillas
+        if (isInsideQuotes(start, quotedRanges)) continue;
+
         const alreadyProcessed = fixes.some(f =>
             (start >= f.start && start < f.end) ||
             (end > f.start && end <= f.end)
@@ -962,6 +1014,9 @@ const parseAndFixNodes = (line) => {
         const [fullMatch, nodeId, content, modifier] = match;
         const start = match.index;
         const end = start + fullMatch.length;
+
+        // Ignorar si empieza dentro de comillas
+        if (isInsideQuotes(start, quotedRanges)) continue;
 
         // Verificar que no es un hexágono (no hay { antes)
         if (start > 0 && line[start - 1] === '{') continue;

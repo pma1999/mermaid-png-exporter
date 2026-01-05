@@ -814,124 +814,7 @@ const parseAndFixNodes = (line) => {
     // =========================================================================
 
     // Regex para encontrar el inicio de un nodo: word + spaces + (
-    const startRegex = /(\w+)\s*\(/g;
-    let startMatch;
 
-    while ((startMatch = startRegex.exec(line)) !== null) {
-        const nodeId = startMatch[1];
-        const openParenIndex = startMatch.index + startMatch[0].length - 1; // Index of '('
-        const matchStartIndex = startMatch.index;
-
-        // Ignorar si empieza dentro de comillas
-        if (isInsideQuotes(matchStartIndex, quotedRanges)) continue;
-
-        // Verificar que NO es una forma especial
-        // Formas especiales que empiezan con (: ((, (((, ([, (\
-        if (openParenIndex + 1 < line.length) {
-            const nextChar = line[openParenIndex + 1];
-            if (nextChar === '(' || nextChar === '[' || nextChar === '\\' || nextChar === '/') {
-                continue; // Es una forma especial, ya procesada arriba
-            }
-        }
-
-        const isProcessed = fixes.some(f =>
-            openParenIndex >= f.start && openParenIndex < f.end
-        );
-        if (isProcessed) continue;
-
-        // Buscar el cierre balanceado )
-        let balance = 1;
-        let closeParenIndex = -1;
-        let inQuotes = false;
-        let quoteChar = '';
-
-        for (let i = openParenIndex + 1; i < line.length; i++) {
-            const char = line[i];
-            const prevChar = i > 0 ? line[i - 1] : '';
-
-            // Manejar comillas para ignorar parens dentro de strings
-            if ((char === '"' || char === "'") && prevChar !== '\\') {
-                if (!inQuotes) {
-                    inQuotes = true;
-                    quoteChar = char;
-                } else if (char === quoteChar) {
-                    inQuotes = false;
-                }
-            }
-
-            if (!inQuotes) {
-                if (char === '(') balance++;
-                else if (char === ')') {
-                    balance--;
-                    if (balance === 0) {
-                        closeParenIndex = i;
-                        break;
-                    }
-                }
-            }
-        }
-
-        if (closeParenIndex !== -1) {
-            // Encontramos el nodo completo: id ( content )
-            const content = line.substring(openParenIndex + 1, closeParenIndex);
-
-            // Buscar modificador opcional después (:::class)
-            let modifier = '';
-            const remainingLine = line.substring(closeParenIndex + 1);
-            const modMatch = remainingLine.match(/^\s*(:::?[\w\-]+)/);
-            if (modMatch) {
-                modifier = modMatch[1];
-            }
-
-            // Calcular el string completo original
-            const totalEnd = closeParenIndex + 1 + (modMatch ? modMatch[0].length : 0);
-            const finalFullMatch = line.substring(startMatch.index, totalEnd);
-
-            // =================================================================
-            // CHECK FOR LEAKED CONTENT (content outside brackets)
-            // =================================================================
-            const leak = detectLeakedContent(line, totalEnd);
-            if (leak) {
-                const mergedContent = (content + leak.leaked).trim();
-                const finalStyle = leak.style || modifier || '';
-
-                // Siempre aplicar fix si hubo leak
-                const quoted = safeQuote(mergedContent);
-                const fixed = `${nodeId}(${quoted})${finalStyle}`;
-
-                // Verificar overlap con leak incluido
-                const leakProcessed = fixes.some(f =>
-                    (leak.fullEndIndex > f.start && leak.fullEndIndex <= f.end)
-                );
-
-                if (!leakProcessed && fixed !== finalFullMatch + leak.originalLeakString) {
-                    fixes.push({
-                        original: finalFullMatch + leak.originalLeakString,
-                        fixed: fixed,
-                        start: startMatch.index,
-                        end: leak.fullEndIndex
-                    });
-                    continue; // Skip standard processing
-                }
-            }
-
-            // Solo procesar si tiene contenido problemático
-            if (hasProblematicContent(content)) {
-                // Para nodos redondos, si hay paréntesis internos, SIEMPRE debemos entrecomillar
-                const fixedContent = safeQuote(content);
-                const fixed = `${nodeId}(${fixedContent})${modifier}`;
-
-                if (fixed !== finalFullMatch) {
-                    fixes.push({
-                        original: finalFullMatch,
-                        fixed: fixed,
-                        start: startMatch.index,
-                        end: totalEnd
-                    });
-                }
-            }
-        }
-    }
     // IMPORTANTE: Excluir formas especiales que ya fueron procesadas
     // Regex actualizado: captura el modificador :::class incluso con espacios antes
     const bracketRegex = /(\w+)\s*\[([^\]]+)\](\s*:::?\w+)?/g;
@@ -1084,6 +967,127 @@ const parseAndFixNodes = (line) => {
     // FIX PRO: Parsing manual de nodos redondos id(...) con paréntesis anidados
     // Este se ejecuta AL FINAL porque es el más "codicioso" y ambiguo.
     // =========================================================================
+
+    // Regex para encontrar el inicio de un nodo: word + spaces + (
+    const startRegex = /(\w+)\s*\(/g;
+    let startMatch;
+
+    while ((startMatch = startRegex.exec(line)) !== null) {
+        const nodeId = startMatch[1];
+        const openParenIndex = startMatch.index + startMatch[0].length - 1; // Index of '('
+        const matchStartIndex = startMatch.index;
+
+        // Ignorar si empieza dentro de comillas
+        if (isInsideQuotes(matchStartIndex, quotedRanges)) continue;
+
+        // Verificar que NO es una forma especial
+        // Formas especiales que empiezan con (: ((, (((, ([, (\
+        if (openParenIndex + 1 < line.length) {
+            const nextChar = line[openParenIndex + 1];
+            if (nextChar === '(' || nextChar === '[' || nextChar === '\\' || nextChar === '/') {
+                continue; // Es una forma especial, ya procesada arriba
+            }
+        }
+
+        const isProcessed = fixes.some(f =>
+            matchStartIndex >= f.start && matchStartIndex < f.end
+        );
+        if (isProcessed) continue;
+
+        // Buscar el cierre balanceado )
+        let balance = 1;
+        let closeParenIndex = -1;
+        let inQuotes = false;
+        let quoteChar = '';
+
+        for (let i = openParenIndex + 1; i < line.length; i++) {
+            const char = line[i];
+            const prevChar = i > 0 ? line[i - 1] : '';
+
+            // Manejar comillas para ignorar parens dentro de strings
+            if ((char === '"' || char === "'") && prevChar !== '\\') {
+                if (!inQuotes) {
+                    inQuotes = true;
+                    quoteChar = char;
+                } else if (char === quoteChar) {
+                    inQuotes = false;
+                }
+            }
+
+            if (!inQuotes) {
+                if (char === '(') balance++;
+                else if (char === ')') {
+                    balance--;
+                    if (balance === 0) {
+                        closeParenIndex = i;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (closeParenIndex !== -1) {
+            // Encontramos el nodo completo: id ( content )
+            const content = line.substring(openParenIndex + 1, closeParenIndex);
+
+            // Buscar modificador opcional después (:::class)
+            let modifier = '';
+            const remainingLine = line.substring(closeParenIndex + 1);
+            const modMatch = remainingLine.match(/^\s*(:::?[\w\-]+)/);
+            if (modMatch) {
+                modifier = modMatch[1];
+            }
+
+            // Calcular el string completo original
+            const totalEnd = closeParenIndex + 1 + (modMatch ? modMatch[0].length : 0);
+            const finalFullMatch = line.substring(startMatch.index, totalEnd);
+
+            // =================================================================
+            // CHECK FOR LEAKED CONTENT (content outside brackets)
+            // =================================================================
+            const leak = detectLeakedContent(line, totalEnd);
+            if (leak) {
+                const mergedContent = (content + leak.leaked).trim();
+                const finalStyle = leak.style || modifier || '';
+
+                // Siempre aplicar fix si hubo leak
+                const quoted = safeQuote(mergedContent);
+                const fixed = `${nodeId}(${quoted})${finalStyle}`;
+
+                // Verificar overlap con leak incluido
+                const leakProcessed = fixes.some(f =>
+                    (leak.fullEndIndex > f.start && leak.fullEndIndex <= f.end)
+                );
+
+                if (!leakProcessed && fixed !== finalFullMatch + leak.originalLeakString) {
+                    fixes.push({
+                        original: finalFullMatch + leak.originalLeakString,
+                        fixed: fixed,
+                        start: startMatch.index,
+                        end: leak.fullEndIndex
+                    });
+                    continue; // Skip standard processing
+                }
+            }
+
+            // Solo procesar si tiene contenido problemático
+            if (hasProblematicContent(content)) {
+                // Para nodos redondos, si hay paréntesis internos, SIEMPRE debemos entrecomillar
+                const fixedContent = safeQuote(content);
+                const fixed = `${nodeId}(${fixedContent})${modifier}`;
+
+                if (fixed !== finalFullMatch) {
+                    fixes.push({
+                        original: finalFullMatch,
+                        fixed: fixed,
+                        start: startMatch.index,
+                        end: totalEnd
+                    });
+                }
+            }
+        }
+    }
+
 
 
 

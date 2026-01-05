@@ -514,6 +514,19 @@ const parseAndFixNodes = (line) => {
             }
 
             // =====================================================================
+            // Validación especial para flag: verificar que NO es un tag HTML
+            // El patrón flag (id>text]) puede coincidir falsamente con HTML como:
+            //   <b>texto] → matchea "b" como nodeId y ">texto]" como flag
+            // Debemos verificar que el carácter anterior al nodeId NO es '<'
+            // =====================================================================
+            if (shape.name === 'flag') {
+                // Si hay un '<' justo antes del nodeId, es un tag HTML, no un flag
+                if (start > 0 && line[start - 1] === '<') {
+                    continue; // Es HTML tag, no un nodo flag
+                }
+            }
+
+            // =====================================================================
             // FIX ESPECIAL PARA NODOS FLAG: id>["text"] → id>"text"]
             // Los usuarios a menudo escriben >["texto"] cuando la sintaxis correcta
             // es >"texto"]. Detectamos y corregimos este patrón común.

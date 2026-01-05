@@ -956,7 +956,7 @@ export const updateStyle = (code, id, type, newProps) => {
                 // edgeLabelBackground explicitly controls the background
                 edgeLabelBackground: newProps.fill === '#ffffff' ? 'transparent' : newProps.fill
             },
-            themeCSS: `.edgeLabel { color: ${newProps.color} !important; opacity: 1 !important; } .label { color: ${newProps.color} !important; } .edgeLabel rect { fill: ${newProps.fill === '#ffffff' ? 'transparent' : newProps.fill} !important; opacity: ${newProps.fill === '#ffffff' ? '0' : '1'} !important; }`
+            themeCSS: `.root .edgeLabel { color: ${newProps.color} !important; opacity: 1 !important; } .root .edgeLabel span, .root .edgeLabel div, .root .edgeLabel p { color: ${newProps.color} !important; opacity: 1 !important; } .edgeLabel rect { fill: ${newProps.fill === '#ffffff' ? 'transparent' : newProps.fill} !important; opacity: ${newProps.fill === '#ffffff' ? '0' : '1'} !important; }`
         });
     } else {
         return updateInlineStyle(code, id, newProps);

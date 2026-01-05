@@ -28,6 +28,11 @@ export const exportSvgToPng = async (svgElement, { scale = 3, transparent = fals
     applyInlineStyles(clonedSvg);
 
     // Insertar estilos con fuentes del sistema
+    // Insertar estilos con fuentes del sistema
+    // Capturamos el ID para asegurar especificidad máxima y vencer conflictos (ej: classDef root)
+    const svgId = svgElement.id; // El ID original del SVG
+    const selectorId = svgId ? `#${svgId}` : '';
+
     const styleElement = document.createElementNS("http://www.w3.org/2000/svg", "style");
     styleElement.textContent = `
     * { 
@@ -39,7 +44,19 @@ export const exportSvgToPng = async (svgElement, { scale = 3, transparent = fals
     }
     .node rect, .node circle, .node ellipse, .node polygon, .node path { stroke-width: 2px; }
     .label { font-size: 14px; }
-    .edgeLabel { background-color: ${transparent ? "transparent" : "#ffffff"}; }
+    
+    /* Regla maestra para etiquetas de bordes - Especificidad Nuclear */
+    ${selectorId} .root .edgeLabel, 
+    ${selectorId} .edgeLabel,
+    ${selectorId} .edgeLabel span,
+    ${selectorId} .edgeLabel div,
+    ${selectorId} .edgeLabel p,
+    ${selectorId} .edgeLabel foreignObject { 
+        background-color: ${transparent ? "transparent" : "#ffffff"}; 
+        color: #000000 !important; 
+        fill: #000000 !important;
+    }
+
     .cluster rect { stroke-width: 2px; }
     .flowchart-link { stroke-width: 2px; }
     .marker { fill: #333; }
@@ -58,7 +75,16 @@ export const exportSvgToPng = async (svgElement, { scale = 3, transparent = fals
         bgRect.setAttribute("width", width);
         bgRect.setAttribute("height", height);
         bgRect.setAttribute("fill", "#ffffff");
-        clonedSvg.insertBefore(bgRect, styleElement.nextSibling);
+        // Insertar después de nuestro style para no romper orden, aunque style ya está dentro
+        clonedSvg.insertBefore(bgRect, clonedSvg.firstChild);
+        // Nota: Insertamos el rect PRIMERO (como firstChild) para que quede AL FONDO (z-index visual).
+        // El styleElement lo insertamos DESPUÉS del rect o lo dejamos gestionar.
+        // Corrección: insertBefore firstChild pone al principio. Si ponemos rect primero, y luego style antes de rect?
+        // Mejor: rect primero (fondo), luego contenido. Style no pinta, da igual.
+        // Vamos a re-insertar styleElement para asegurar
+        clonedSvg.insertBefore(styleElement, bgRect.nextSibling);
+    } else {
+        clonedSvg.insertBefore(styleElement, clonedSvg.firstChild);
     }
 
     // Serializar SVG y convertir a Data URI
@@ -132,7 +158,7 @@ const applyInlineStyles = (element) => {
     const importantStyles = [
         'fill', 'stroke', 'stroke-width', 'font-family', 'font-size',
         'font-weight', 'opacity', 'transform', 'text-anchor',
-        'dominant-baseline', 'fill-opacity', 'stroke-opacity'
+        'dominant-baseline', 'fill-opacity', 'stroke-opacity', 'color'
     ];
 
     importantStyles.forEach(prop => {

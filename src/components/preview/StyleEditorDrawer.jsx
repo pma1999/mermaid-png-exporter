@@ -50,6 +50,22 @@ export function StyleEditorDrawer({ isOpen, onClose, code, onCodeChange }) {
     const handleFixStyle = (styleItem) => {
         const key = `${styleItem.type}:${styleItem.id}`;
 
+        // Special handling for edgeLabel to force fix
+        if (styleItem.type === 'edgeLabel') {
+            const updateProps = {
+                color: '#000000',
+                fill: 'transparent',
+                _type: styleItem.type,
+                _id: styleItem.id
+            };
+            // Note: The actual mapping to themeVariables happens in styleParser.js updateStyle
+            setPendingChanges(prev => ({
+                ...prev,
+                [key]: { ...prev[key], ...updateProps }
+            }));
+            return;
+        }
+
         // Use intelligent smart fix
         const smartFix = smartContrastFix(styleItem.fill, styleItem.color);
 
@@ -441,6 +457,13 @@ export function StyleEditorDrawer({ isOpen, onClose, code, onCodeChange }) {
         const key = `${styleItem.type}:${styleItem.id}`;
         const fill = pendingChanges[key]?.fill || styleItem.fill;
         const color = pendingChanges[key]?.color || styleItem.color;
+
+
+        // Special handling for edge labels (global)
+        if (styleItem.type === 'edgeLabel') {
+            return renderEdgeLabelCard(styleItem, key, fill, color);
+        }
+
         const { ratio, level } = getContrastRatio(color, fill);
         const indicator = getContrastIndicator(level, ratio);
 
@@ -555,6 +578,101 @@ export function StyleEditorDrawer({ isOpen, onClose, code, onCodeChange }) {
                         theme={theme}
                     />
                 </div>
+            </div>
+        );
+    };
+
+    // Special card renderer for Edge Labels
+    const renderEdgeLabelCard = (styleItem, key, fill, color) => {
+        const { ratio, level } = getContrastRatio(color, fill);
+        const indicator = getContrastIndicator(level, ratio);
+
+        return (
+            <div key={key} style={{ ...styles.classCard, borderLeft: '4px solid #f59e0b' }}>
+                <div style={styles.classHeader}>
+                    <div style={styles.className}>
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: '24px',
+                            height: '24px',
+                            background: '#fef3c7',
+                            borderRadius: '6px',
+                            color: '#d97706'
+                        }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M5 12h14M12 5l7 7-7 7" />
+                            </svg>
+                        </div>
+                        <span>Edge Labels (Global)</span>
+                        <span style={{
+                            fontSize: '9px',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            background: '#fffbeb',
+                            color: '#b45309',
+                            fontWeight: '600',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.05em',
+                        }}>ALL {styleItem.count} LABELS</span>
+                    </div>
+
+                    <button
+                        style={{
+                            ...styles.fixButton,
+                            background: '#fff7ed',
+                            border: '1px solid #fdba74',
+                            color: '#ea580c'
+                        }}
+                        onClick={() => handleFixStyle(styleItem)}
+                    >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                        </svg>
+                        {t('styleEditor.autoFix')}
+                    </button>
+                </div>
+
+                <div style={{
+                    fontSize: '11px',
+                    color: colors.textMuted,
+                    marginBottom: '12px',
+                    padding: '8px',
+                    background: colors.bgHover,
+                    borderRadius: '6px'
+                }}>
+                    {styleItem.description || 'Fix visibility for all edge labels'}
+                </div>
+
+                {/* Preview Box */}
+                <div style={{ ...styles.previewBox, background: fill, color: color, marginBottom: '16px' }}>
+                    -- {styleItem.description ? styleItem.description.split('"')[1] : 'Label Text'} --&gt;
+                </div>
+
+                {/* Contrast Meter */}
+                <div style={styles.contrastMeter}>
+                    <div style={styles.contrastLabel}>
+                        <span>{t('styleEditor.contrast')}</span>
+                        <span style={{ ...styles.contrastValue, color: indicator.color }}>
+                            {ratio}:1 {indicator.icon} {indicator.text}
+                        </span>
+                    </div>
+                    <div style={styles.meterTrack}>
+                        <div
+                            style={{
+                                ...styles.meterFill,
+                                width: `${getMeterWidth(ratio)}%`,
+                                background: level === 'FAIL'
+                                    ? 'linear-gradient(90deg, #ef4444 0%, #f87171 100%)'
+                                    : level === 'AA'
+                                        ? 'linear-gradient(90deg, #fbbf24 0%, #fcd34d 100%)'
+                                        : 'linear-gradient(90deg, #22c55e 0%, #4ade80 100%)',
+                            }}
+                        />
+                    </div>
+                </div>
+
             </div>
         );
     };

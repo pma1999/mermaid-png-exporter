@@ -33,6 +33,10 @@ export const es = {
     error: {
         line: 'Línea',
         autoFix: 'Auto-Fix',
+        fill: 'Fondo',
+        edgeLabels: 'Etiquetas de Aristas',
+        edgeLabelIssue: 'Etiquetas invisibles (blanco sobre blanco)',
+        fixEdgeLabels: 'Arreglar Etiquetas',
         fix: 'Fix',
         problematicCode: 'Código problemático:',
         whatHappened: '¿Qué ocurre?',

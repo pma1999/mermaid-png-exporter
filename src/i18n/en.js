@@ -60,6 +60,9 @@ export const en = {
         improveAll: '→ AAA',
         apply: 'Apply',
         fill: 'Fill',
+        edgeLabels: 'Edge Labels',
+        edgeLabelIssue: 'Invisible labels (white on white)',
+        fixEdgeLabels: 'Fix Labels',
         textColor: 'Text',
     },
     examples: {

@@ -918,6 +918,25 @@ export const autoFixMermaidCode = (code) => {
             return fixedLine;
         }
 
+        // =====================================================================
+        // FIX GLOBAL: Eliminar espacios antes de ::: en TODOS los nodos
+        // Algunos navegadores/versiones de Mermaid no aceptan "] :::class"
+        // Debe ser "]:::class" sin espacio
+        // Este fix se aplica INCLUSO si no hubo otros cambios en la línea
+        // =====================================================================
+        const spaceBeforeClassPattern = /(\]|\}|\)|(?:\]\])|(?:\)\))|(?:\)\]\]))\s+(:::?\w+)/g;
+        if (spaceBeforeClassPattern.test(currentLine)) {
+            const fixedLine = currentLine.replace(/(\]|\}|\)|(?:\]\])|(?:\)\))|(?:\)\]\]))\s+(:::?\w+)/g, '$1$2');
+            if (fixedLine !== currentLine) {
+                allFixes.push({
+                    line: index + 1,
+                    original: 'space before :::',
+                    fixed: 'removed space before class separator'
+                });
+                return fixedLine;
+            }
+        }
+
         // Retornar la línea (posiblemente modificada por trailing fix)
         return currentLine;
     });

@@ -1,5 +1,5 @@
 /**
- * Sistema de Auto-corrección de código Mermaid v2.4
+ * Sistema de Auto-corrección de código Mermaid v2.5
  * 
  * PRINCIPIO FUNDAMENTAL: "First, do no harm"
  * - Solo modificar nodos que CLARAMENTE tienen problemas
@@ -14,11 +14,92 @@
  * v2.2 - Fix para comillas internas que causan error STR (string literal)
  * v2.3 - Fix para sintaxis inválida después de nodos: ]:(text), }:(text), etc.
  * v2.4 - Fix para edge labels con paréntesis: -->|texto (problemático)| 
+ * v2.5 - Fix para directivas 'style' en mindmaps (no soportadas, se renderizan como texto)
  */
+
+// =============================================================================
+// DETECCIÓN DE TIPO DE DIAGRAMA Y SOPORTE DE ESTILOS
+// =============================================================================
+
+/**
+ * Configuración de qué directivas de estilo soporta cada tipo de diagrama
+ * 
+ * - style: Directiva inline (style nodeId fill:#color)
+ * - classDef: Definición de clase (classDef className fill:#color)
+ * - classAssign: Asignación de clase con keyword 'class' (class node1 className)
+ * - inlineClass: Aplicación de clase con ::: (nodeId:::className)
+ */
+const DIAGRAM_STYLE_SUPPORT = {
+    flowchart: { style: true, classDef: true, classAssign: true, inlineClass: true },
+    graph: { style: true, classDef: true, classAssign: true, inlineClass: true },
+    mindmap: { style: false, classDef: true, classAssign: false, inlineClass: true },
+    sequence: { style: false, classDef: false, classAssign: false, inlineClass: false },
+    class: { style: true, classDef: true, classAssign: true, inlineClass: true },
+    state: { style: true, classDef: true, classAssign: true, inlineClass: true },
+    er: { style: false, classDef: false, classAssign: false, inlineClass: false },
+    gantt: { style: false, classDef: false, classAssign: false, inlineClass: false },
+    pie: { style: false, classDef: false, classAssign: false, inlineClass: false },
+    journey: { style: false, classDef: false, classAssign: false, inlineClass: false },
+    gitgraph: { style: false, classDef: false, classAssign: false, inlineClass: false },
+    unknown: { style: true, classDef: true, classAssign: true, inlineClass: true } // Permisivo por defecto
+};
+
+/**
+ * Detecta el tipo de diagrama Mermaid a partir del código
+ * 
+ * @param {string} code - Código Mermaid completo
+ * @returns {string} - Tipo de diagrama: 'flowchart', 'mindmap', 'sequence', etc.
+ */
+export const getDiagramType = (code) => {
+    if (!code || typeof code !== 'string') return 'unknown';
+
+    // Buscar la primera línea significativa (ignorar comentarios y espacios)
+    const lines = code.split('\n');
+    for (const line of lines) {
+        const trimmed = line.trim().toLowerCase();
+
+        // Ignorar líneas vacías y comentarios
+        if (!trimmed || trimmed.startsWith('%%')) continue;
+
+        // Ignorar directivas de configuración %%{init...}%%
+        if (trimmed.startsWith('%%{')) continue;
+
+        // Detectar tipo de diagrama
+        if (trimmed.startsWith('mindmap')) return 'mindmap';
+        if (trimmed.startsWith('flowchart')) return 'flowchart';
+        if (trimmed.startsWith('graph ') || trimmed.startsWith('graph\t') || trimmed === 'graph') return 'graph';
+        if (trimmed.startsWith('sequencediagram')) return 'sequence';
+        if (trimmed.startsWith('classdiagram')) return 'class';
+        if (trimmed.startsWith('statediagram')) return 'state';
+        if (trimmed.startsWith('erdiagram')) return 'er';
+        if (trimmed.startsWith('gantt')) return 'gantt';
+        if (trimmed.startsWith('pie')) return 'pie';
+        if (trimmed.startsWith('journey')) return 'journey';
+        if (trimmed.startsWith('gitgraph')) return 'gitgraph';
+
+        // Si llegamos a una línea no reconocida, asumimos desconocido
+        break;
+    }
+
+    return 'unknown';
+};
+
+/**
+ * Verifica si un tipo de diagrama soporta una directiva de estilo específica
+ * 
+ * @param {string} diagramType - Tipo de diagrama
+ * @param {'style' | 'classDef' | 'classAssign' | 'inlineClass'} directive - Directiva a verificar
+ * @returns {boolean}
+ */
+export const supportsStyleDirective = (diagramType, directive) => {
+    const support = DIAGRAM_STYLE_SUPPORT[diagramType] || DIAGRAM_STYLE_SUPPORT.unknown;
+    return support[directive] === true;
+};
 
 // =============================================================================
 // UTILIDADES DE DETECCIÓN
 // =============================================================================
+
 
 /**
  * Verifica si una cadena está completamente entrecomillada (inicio Y fin)
@@ -803,28 +884,68 @@ const applyFixes = (line, fixes) => {
  * Sistema de Auto-corrección global de código Mermaid
  * 
  * @param {string} code - Código Mermaid a corregir
- * @returns {{code: string, fixes: Array, hasChanges: boolean}}
+ * @returns {{code: string, fixes: Array, hasChanges: boolean, diagramType: string}}
  */
 export const autoFixMermaidCode = (code) => {
     const allFixes = [];
 
+    // Detectar tipo de diagrama para manejar estilos específicos
+    const diagramType = getDiagramType(code);
+    const styleSupport = DIAGRAM_STYLE_SUPPORT[diagramType] || DIAGRAM_STYLE_SUPPORT.unknown;
+
     const lines = code.split('\n');
     const fixedLines = lines.map((line, index) => {
+        // =================================================================
+        // MANEJO ESPECIAL DE DIRECTIVAS DE ESTILO POR TIPO DE DIAGRAMA
+        // =================================================================
+
+        // Detectar directivas 'style nodeId' (NO soportadas en mindmaps)
+        if (/^\s*style\s+\w+/.test(line)) {
+            if (!styleSupport.style) {
+                // El diagrama no soporta 'style' - eliminar la línea y reportar
+                allFixes.push({
+                    line: index + 1,
+                    type: 'unsupported_style_directive',
+                    original: line.trim(),
+                    fixed: '(línea eliminada)',
+                    description: `Los diagramas tipo '${diagramType}' no soportan directivas 'style'. Se renderizaría como texto.`
+                });
+                return null; // Marcar para eliminar
+            }
+            return line; // Mantener en diagramas que sí soportan
+        }
+
+        // Detectar directivas 'class node1,node2 className' (NO soportadas en mindmaps)
+        if (/^\s*class\s+[\w,]+\s+\w+/.test(line)) {
+            if (!styleSupport.classAssign) {
+                // El diagrama no soporta asignación de clase con 'class' keyword
+                allFixes.push({
+                    line: index + 1,
+                    type: 'unsupported_class_assign',
+                    original: line.trim(),
+                    fixed: '(línea eliminada)',
+                    description: `Los diagramas tipo '${diagramType}' no soportan 'class nodeId className'. Usa ':::className' inline.`
+                });
+                return null; // Marcar para eliminar
+            }
+            return line;
+        }
+
         // Ignorar líneas que no necesitan procesamiento
         if (
             /^\s*%%/.test(line) ||           // Comentarios
-            /^\s*classDef\s/.test(line) ||   // Definiciones de clase
-            /^\s*class\s/.test(line) ||      // Asignaciones de clase
-            /^\s*style\s/.test(line) ||      // Estilos inline
+            /^\s*classDef\s/.test(line) ||   // Definiciones de clase (soportadas en mindmaps)
             /^\s*graph\s/.test(line) ||      // Declaración de grafo
             /^\s*flowchart\s/.test(line) ||  // Declaración de flowchart
             /^\s*sequenceDiagram/.test(line) || // Diagrama de secuencia
+            /^\s*mindmap/.test(line) ||      // Declaración de mindmap
             /^\s*end\s*$/.test(line) ||      // Cierre de subgraph
             /^\s*direction\s/.test(line) ||  // Dirección
             /^\s*$/.test(line)               // Líneas vacías
         ) {
             return line;
         }
+
 
         // FIX ESPECIAL: Subgraph titles con paréntesis
         // Sintaxis: subgraph ID [título que puede tener (paréntesis)]
@@ -941,12 +1062,17 @@ export const autoFixMermaidCode = (code) => {
         return currentLine;
     });
 
+    // Filtrar líneas marcadas como null (eliminadas por directivas no soportadas)
+    const cleanedLines = fixedLines.filter(line => line !== null);
+
     return {
-        code: fixedLines.join('\n'),
+        code: cleanedLines.join('\n'),
         fixes: allFixes,
-        hasChanges: allFixes.length > 0
+        hasChanges: allFixes.length > 0,
+        diagramType: diagramType
     };
 };
+
 
 /**
  * Analiza el código y devuelve problemas detectados sin corregir
@@ -958,17 +1084,48 @@ export const analyzeCode = (code) => {
     const issues = [];
     const lines = code.split('\n');
 
+    // Detectar tipo de diagrama para verificar soporte de estilos
+    const diagramType = getDiagramType(code);
+    const styleSupport = DIAGRAM_STYLE_SUPPORT[diagramType] || DIAGRAM_STYLE_SUPPORT.unknown;
+
     lines.forEach((line, index) => {
-        // Ignorar líneas especiales
+        // =================================================================
+        // DETECCIÓN DE DIRECTIVAS DE ESTILO NO SOPORTADAS
+        // =================================================================
+
+        // Detectar 'style nodeId' en diagramas que no lo soportan (ej: mindmaps)
+        if (/^\s*style\s+\w+/.test(line) && !styleSupport.style) {
+            issues.push({
+                line: index + 1,
+                type: 'unsupported_style_directive',
+                content: line.trim(),
+                description: `Los diagramas tipo '${diagramType}' no soportan directivas 'style'. Se renderiza como texto.`
+            });
+            return;
+        }
+
+        // Detectar 'class nodeId className' en diagramas que no lo soportan
+        if (/^\s*class\s+[\w,]+\s+\w+/.test(line) && !styleSupport.classAssign) {
+            issues.push({
+                line: index + 1,
+                type: 'unsupported_class_assign',
+                content: line.trim(),
+                description: `Los diagramas tipo '${diagramType}' no soportan 'class nodeId className'. Usa ':::className' inline.`
+            });
+            return;
+        }
+
+        // Ignorar líneas especiales que no necesitan análisis
         if (
-            /^\s*%%/.test(line) ||
-            /^\s*classDef\s/.test(line) ||
-            /^\s*class\s/.test(line) ||
-            /^\s*style\s/.test(line) ||
-            /^\s*$/.test(line)
+            /^\s*%%/.test(line) ||            // Comentarios
+            /^\s*classDef\s/.test(line) ||    // classDef SÍ es soportado en mindmaps
+            /^\s*style\s/.test(line) ||       // Ya procesado arriba si no era soportado
+            /^\s*class\s/.test(line) ||       // Ya procesado arriba si no era soportado
+            /^\s*$/.test(line)                // Líneas vacías
         ) {
             return;
         }
+
 
         // Detectar problemas en subgraph titles
         if (/^\s*subgraph\s/.test(line)) {

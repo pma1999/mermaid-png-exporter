@@ -1,4 +1,5 @@
-import { autoFixMermaidCode, analyzeCode, detectSpecialShapes } from './mermaidAutoFix';
+import { autoFixMermaidCode, analyzeCode, detectSpecialShapes, getDiagramType } from './mermaidAutoFix';
+
 
 /**
  * Tokens de error relacionados con formas especiales de Mermaid
@@ -129,8 +130,24 @@ export const ERROR_PATTERNS = [
         explanation: `Hay más declaraciones 'subgraph' que cierres 'end'. Cada subgraph necesita su correspondiente 'end'.`,
         suggestion: "Añade 'end' para cerrar cada subgraph abierto.",
         canAutoFix: false
+    },
+    {
+        // Este patrón NO se dispara por un error, sino por análisis proactivo
+        // Se usa para detectar el problema silencioso de estilos en mindmaps
+        pattern: /mindmap/i,
+        detect: (code) => {
+            // Solo aplicar a mindmaps
+            if (!code.trim().toLowerCase().startsWith('mindmap')) return false;
+            // Detectar si hay directivas 'style nodeId' que se renderizarán como texto
+            return /^\s*style\s+\w+/m.test(code);
+        },
+        title: "Estilos no soportados en mindmap",
+        explanation: "Los mindmaps de Mermaid NO soportan directivas 'style nodeId'. Estas líneas se renderizan como nodos de texto visibles en lugar de aplicar estilos.",
+        suggestion: 'Haz clic en "Auto-Fix" para eliminar las directivas no soportadas. Para aplicar estilos, usa classDef dentro del mindmap y :::className en los nodos.',
+        canAutoFix: true
     }
 ];
+
 
 /**
  * Extrae la línea real del error buscando el fragmento en el código

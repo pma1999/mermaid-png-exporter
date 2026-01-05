@@ -306,6 +306,65 @@ const fixSpecialNode = (nodeId, content, openDelim, closeDelim, modifier = '') =
     return `${nodeId}${openDelim}${content}${closeDelim}${modifier}`;
 };
 
+/**
+ * Detecta contenido que se ha "escapado" fuera del nodo (ej: <br/> o paréntesis extra)
+ * y que debería ser parte del nodo.
+ * 
+ * @param {string} line - Línea completa
+ * @param {number} afterNodeIndex - Índice justo después del cierre del nodo
+ * @returns {{leaked: string, style: string, fullEndIndex: number, originalLeakString: string}|null}
+ */
+const detectLeakedContent = (line, afterNodeIndex) => {
+    const remaining = line.slice(afterNodeIndex);
+
+    // 1. Detección ESTRICTA: Contenido seguido de estilo :::
+    // Captura: (espacios + contenido) + (:::style)
+    // Excluye si empieza con flecha
+    const strictStylePattern = /^(\s*[^%\r\n]+?)(:::[\w\-]+)/;
+    const matchStyle = remaining.match(strictStylePattern);
+
+    if (matchStyle) {
+        const content = matchStyle[1];
+        // Si parece una flecha, no es leak, es una conexión con estilo
+        if (/^\s*(--|==|o--|x--|<--|-\.)/.test(content)) return null;
+
+        // Si parece el inicio de otro nodo (ID + apertura), abortar
+        // Ej: "NodeA :::style" -> OK (estilo de NodeA si no fue capturado antes)
+        // Ej: " <br> NodeB[..." -> NO OK
+        if (/\b\w+\s*[\(\[\{\>]/.test(content)) return null;
+
+        // Si es solo espacios, no hay leak real de contenido, solo estilo separado
+        // Retornar solo el estilo para que se junte
+        return {
+            leaked: content,
+            style: matchStyle[2],
+            originalLeakString: matchStyle[0],
+            fullEndIndex: afterNodeIndex + matchStyle[0].length
+        };
+    }
+
+    // 2. Detección RELAJADA: Empieza con <br> o (
+    // Solo si NO detectamos estilo arriba.
+    // Captura hasta el siguiente separador fuerte (flecha, comentario, EOL)
+    const loosePattern = /^(\s*(?:<br\s*\/?>|\()[^%\r\n]*?)(?=\s*(?:%%|-->|==>|-\.->|--|$))/;
+    const matchLoose = remaining.match(loosePattern);
+
+    if (matchLoose) {
+        const content = matchLoose[1];
+        // Verificar seguridad: no parece otro nodo
+        if (/\b\w+\s*[\(\[\{\>]/.test(content)) return null;
+
+        return {
+            leaked: content,
+            style: '', // Sin estilo detectado
+            originalLeakString: matchLoose[0],
+            fullEndIndex: afterNodeIndex + matchLoose[0].length
+        };
+    }
+
+    return null;
+};
+
 // =============================================================================
 // FIX PARA SUBGRAPH TITLES
 // =============================================================================
@@ -584,6 +643,34 @@ const parseAndFixNodes = (line) => {
             );
             if (alreadyProcessed) continue;
 
+            // =================================================================
+            // CHECK FOR LEAKED CONTENT (content outside brackets)
+            // =================================================================
+            const leak = detectLeakedContent(line, end);
+            if (leak) {
+                const mergedContent = content + leak.leaked;
+                const finalStyle = leak.style || modifier || '';
+
+                // Siempre aplicar fix si hubo leak
+                const quoted = safeQuote(mergedContent); // Handles internal quotes
+                const fixed = `${nodeId}${openDelim}${quoted}${closeDelim}${finalStyle}`;
+
+                // Verificar overlap con leak incluido
+                const leakProcessed = fixes.some(f =>
+                    (leak.fullEndIndex > f.start && leak.fullEndIndex <= f.end)
+                );
+
+                if (!leakProcessed && fixed !== fullMatch + leak.originalLeakString) {
+                    fixes.push({
+                        original: fullMatch + leak.originalLeakString,
+                        fixed: fixed,
+                        start: start,
+                        end: leak.fullEndIndex
+                    });
+                    continue; // Skip standard processing
+                }
+            }
+
             // Validación especial: para circle, verificar que no es parte de double_circle
             if (shape.name === 'circle') {
                 // Verificar si hay ( antes o ) después
@@ -692,8 +779,6 @@ const parseAndFixNodes = (line) => {
             }
         }
 
-        // Verificar que no ha sido procesado ya
-        // Esto es importante para no procesar sub-partes de algo ya arreglado
         const isProcessed = fixes.some(f =>
             openParenIndex >= f.start && openParenIndex < f.end
         );
@@ -747,6 +832,34 @@ const parseAndFixNodes = (line) => {
             const totalEnd = closeParenIndex + 1 + (modMatch ? modMatch[0].length : 0);
             const finalFullMatch = line.substring(startMatch.index, totalEnd);
 
+            // =================================================================
+            // CHECK FOR LEAKED CONTENT (content outside brackets)
+            // =================================================================
+            const leak = detectLeakedContent(line, totalEnd);
+            if (leak) {
+                const mergedContent = content + leak.leaked;
+                const finalStyle = leak.style || modifier || '';
+
+                // Siempre aplicar fix si hubo leak
+                const quoted = safeQuote(mergedContent);
+                const fixed = `${nodeId}(${quoted})${finalStyle}`;
+
+                // Verificar overlap con leak incluido
+                const leakProcessed = fixes.some(f =>
+                    (leak.fullEndIndex > f.start && leak.fullEndIndex <= f.end)
+                );
+
+                if (!leakProcessed && fixed !== finalFullMatch + leak.originalLeakString) {
+                    fixes.push({
+                        original: finalFullMatch + leak.originalLeakString,
+                        fixed: fixed,
+                        start: startMatch.index,
+                        end: leak.fullEndIndex
+                    });
+                    continue; // Skip standard processing
+                }
+            }
+
             // Solo procesar si tiene contenido problemático
             if (hasProblematicContent(content)) {
                 // Para nodos redondos, si hay paréntesis internos, SIEMPRE debemos entrecomillar
@@ -774,12 +887,40 @@ const parseAndFixNodes = (line) => {
         const start = match.index;
         const end = start + fullMatch.length;
 
-        // Verificar que no estamos dentro de otro match ya procesado
         const alreadyProcessed = fixes.some(f =>
             (start >= f.start && start < f.end) ||
             (end > f.start && end <= f.end)
         );
         if (alreadyProcessed) continue;
+
+        // =================================================================
+        // CHECK FOR LEAKED CONTENT (content outside brackets)
+        // =================================================================
+        const leak = detectLeakedContent(line, end);
+        if (leak) {
+            const mergedContent = content + leak.leaked;
+            // IMPORTANTE: Eliminar espacios antes del modificador :::
+            const existingMod = modifierWithSpace ? modifierWithSpace.trim() : '';
+            const finalStyle = leak.style || existingMod || '';
+
+            const quoted = safeQuote(mergedContent);
+            const fixed = `${nodeId}[${quoted}]${finalStyle}`;
+
+            // Verificar overlap con leak incluido
+            const leakProcessed = fixes.some(f =>
+                (leak.fullEndIndex > f.start && leak.fullEndIndex <= f.end)
+            );
+
+            if (!leakProcessed && fixed !== fullMatch + leak.originalLeakString) {
+                fixes.push({
+                    original: fullMatch + leak.originalLeakString,
+                    fixed: fixed,
+                    start: start,
+                    end: leak.fullEndIndex
+                });
+                continue; // Skip standard processing
+            }
+        }
 
         // Verificar que no es una forma especial (contenido empieza con /, \, [, ()
         const firstChar = content.trim()[0];
@@ -831,6 +972,33 @@ const parseAndFixNodes = (line) => {
             (end > f.start && end <= f.end)
         );
         if (alreadyProcessed) continue;
+
+        // =================================================================
+        // CHECK FOR LEAKED CONTENT (content outside brackets)
+        // =================================================================
+        const leak = detectLeakedContent(line, end);
+        if (leak) {
+            const mergedContent = content + leak.leaked;
+            const finalStyle = leak.style || modifier || '';
+
+            const quoted = safeQuote(mergedContent);
+            const fixed = `${nodeId}{${quoted}}${finalStyle}`;
+
+            // Verificar overlap con leak incluido
+            const leakProcessed = fixes.some(f =>
+                (leak.fullEndIndex > f.start && leak.fullEndIndex <= f.end)
+            );
+
+            if (!leakProcessed && fixed !== fullMatch + leak.originalLeakString) {
+                fixes.push({
+                    original: fullMatch + leak.originalLeakString,
+                    fixed: fixed,
+                    start: start,
+                    end: leak.fullEndIndex
+                });
+                continue; // Skip standard processing
+            }
+        }
 
         // Verificar si ya está entrecomillado
         if (isFullyQuoted(content.trim())) continue;

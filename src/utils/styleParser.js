@@ -1097,29 +1097,55 @@ export const analyzeAllStyles = (code) => {
 
     // Analyze subgraph title styles
     // Subgraph titles are critical for visibility - they often default to white text
+    // 
+    // IMPORTANT: Check if CSS injection via themeCSS has already fixed the colors
+    // This happens when injectSubgraphTitleCSS has been called
+    const initData = parseInitDirective(code);
+    const hasCSSFix = initData.exists && 
+                      !initData.error && 
+                      initData.config.themeCSS && 
+                      initData.config.themeCSS.includes('.cluster-label');
+    
+    // Extract color from CSS if present (look for color: #XXXXXX pattern in cluster-label rules)
+    let cssFixedColor = null;
+    if (hasCSSFix) {
+        const cssColorMatch = initData.config.themeCSS.match(/\.cluster-label[^}]*color:\s*(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3})/);
+        if (cssColorMatch) {
+            cssFixedColor = cssColorMatch[1];
+        }
+    }
+    
+    // Also check themeVariables.titleColor
+    const titleColorFromTheme = initData.exists && 
+                                !initData.error && 
+                                initData.config.themeVariables?.titleColor;
+    
     subgraphStyles.forEach((props, subgraphId) => {
         // For subgraphs, the background is the 'fill' of the cluster rect
         // and 'color' controls the title text color
         // 
-        // Mermaid defaults for neutral theme:
-        // - clusterBkg: #ffffde (light yellow) or similar light color
-        // - Title text: often inherits from primaryTextColor which can be white
-        //
-        // For safety, if no explicit fill, assume light background (#f5f5f5)
-        // If no explicit color, assume potential issue (white text)
+        // Check for color in this priority:
+        // 1. CSS injection fix (themeCSS .cluster-label rules)
+        // 2. themeVariables.titleColor
+        // 3. Inline style color
+        // 4. Default (assume white - problematic)
         
-        const fill = props.fill || '#f5f5f5'; // Default cluster background (light)
-        const color = props.color || '#ffffff'; // Assume white if not specified - often the problem!
+        const fill = props.fill || initData.config?.themeVariables?.clusterBkg || '#f5f5f5';
+        const color = cssFixedColor || titleColorFromTheme || props.color || '#ffffff';
         
         const contrast = getContrastRatio(color, fill);
         const suggestedColor = suggestTextColor(fill);
         
+        // The fix is already applied if:
+        // - CSS injection is present with cluster-label rules, OR
+        // - titleColor is explicitly set in themeVariables
+        const isAlreadyFixed = hasCSSFix || titleColorFromTheme;
+        
         // Mark as needing fix if:
-        // 1. No explicit color is set (could be white on light)
-        // 2. Explicit color has poor contrast
-        const needsFix = !props.hasExplicitStyle || 
-                         !props.color || 
-                         contrast.level === 'FAIL';
+        // 1. Not already fixed by CSS injection
+        // 2. AND (no explicit color is set OR explicit color has poor contrast)
+        const needsFix = !isAlreadyFixed && 
+                         (!props.hasExplicitStyle || !props.color || contrast.level === 'FAIL');
 
         results.push({
             id: subgraphId,
@@ -1133,7 +1159,8 @@ export const analyzeAllStyles = (code) => {
             suggestedColor,
             needsFix,
             lineNumber: props.lineNumber || props.subgraphLineNumber,
-            hasExplicitStyle: props.hasExplicitStyle,
+            hasExplicitStyle: props.hasExplicitStyle || isAlreadyFixed,
+            isFixedByCSS: isAlreadyFixed,
             description: `Subgraph title: "${props.title}"`
         });
     });
@@ -1148,24 +1175,47 @@ export const analyzeAllStyles = (code) => {
         // OR the edge label background if specified
         const bg = currentStyle.backgroundColor === 'transparent' ? '#ffffff' : currentStyle.backgroundColor;
 
-        // Edge labels usually default to theme text color, which might be white in dark theme code
-        // We assume potential issue if it's white-ish on white
-        // Note: Mermaid defaults are complex, but for safety we check explicit color or 'white' default
-
-        // Check ALL labels with the same global style
-        const contrast = getContrastRatio(currentStyle.textColor, bg);
+        // Check if CSS injection has already fixed edge labels
+        // initData is already parsed above for subgraphs
+        const hasEdgeLabelCSSFix = initData.exists && 
+                                   !initData.error && 
+                                   initData.config.themeCSS && 
+                                   initData.config.themeCSS.includes('.edgeLabel');
+        
+        // Extract color from CSS if present
+        let edgeLabelCSSColor = null;
+        if (hasEdgeLabelCSSFix) {
+            const cssMatch = initData.config.themeCSS.match(/\.edgeLabel[^}]*color:\s*(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3})/);
+            if (cssMatch) {
+                edgeLabelCSSColor = cssMatch[1];
+            }
+        }
+        
+        // Also check themeVariables
+        const edgeLabelColorFromTheme = initData.exists && 
+                                        !initData.error && 
+                                        (initData.config.themeVariables?.tertiaryTextColor || 
+                                         initData.config.themeVariables?.textColor);
+        
+        // Use the fixed color if available
+        const effectiveColor = edgeLabelCSSColor || edgeLabelColorFromTheme || currentStyle.textColor;
+        const contrast = getContrastRatio(effectiveColor, bg);
         const suggestedColor = suggestTextColor(bg);
+        
+        // Check if already fixed
+        const isAlreadyFixed = hasEdgeLabelCSSFix || edgeLabelColorFromTheme;
 
         // Add a SINGLE global entry for all edge labels
         results.push({
             id: 'Global Edge Labels', // Special ID
             type: 'edgeLabel',       // Special Type
             fill: bg,
-            color: currentStyle.textColor,
+            color: effectiveColor,
             count: edgeLabels.length,
             contrast,
             suggestedColor,
-            needsFix: true, // ALWAYS allow fixing edge labels as they are tricky
+            needsFix: !isAlreadyFixed || contrast.level === 'FAIL', // Only need fix if not fixed or still failing
+            isFixedByCSS: isAlreadyFixed,
             lineNumber: 1, // Global
             description: `${edgeLabels.length} edge labels found (e.g. "${edgeLabels[0].text}")`
         });

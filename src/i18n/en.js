@@ -64,6 +64,7 @@ export const en = {
         edgeLabelIssue: 'Invisible labels (white on white)',
         fixEdgeLabels: 'Fix Labels',
         textColor: 'Text',
+        fixedViaCSS: 'Fixed via CSS injection',
     },
     examples: {
         flowchart: `flowchart LR

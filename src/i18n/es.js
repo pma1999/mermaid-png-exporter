@@ -65,6 +65,7 @@ export const es = {
         apply: 'Aplicar',
         fill: 'Relleno',
         textColor: 'Texto',
+        fixedViaCSS: 'Corregido via CSS',
     },
     examples: {
         flowchart: `flowchart LR

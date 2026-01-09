@@ -9,6 +9,8 @@ import {
     autoFixAllStyles,
     improveAllStyles,
     COLOR_PALETTES,
+    updateSubgraphStyle,
+    injectSubgraphTitleCSS,
 } from '../../utils/styleParser';
 
 /**
@@ -66,7 +68,29 @@ export function StyleEditorDrawer({ isOpen, onClose, code, onCodeChange }) {
             return;
         }
 
-        // Use intelligent smart fix
+        // Special handling for subgraph titles
+        // Mermaid doesn't support per-subgraph title colors via style statements
+        // We need to use global CSS injection for title colors
+        if (styleItem.type === 'subgraph') {
+            const suggestedColor = styleItem.suggestedColor || '#000000';
+            
+            // Apply fill for background and inject global CSS for title color
+            let updatedCode = code;
+            
+            // Add fill style for the subgraph background
+            if (!styleItem.hasExplicitStyle || !styleItem.fill) {
+                updatedCode = updateSubgraphStyle(updatedCode, styleItem.id, { fill: '#f5f5f5' });
+            }
+            
+            // Inject global CSS for subgraph title colors
+            updatedCode = injectSubgraphTitleCSS(updatedCode, suggestedColor);
+            
+            // Apply changes directly since CSS injection requires immediate update
+            onCodeChange(updatedCode);
+            return;
+        }
+
+        // Use intelligent smart fix for classDef and inline styles
         const smartFix = smartContrastFix(styleItem.fill, styleItem.color);
 
         if (smartFix.strategy === 'none') return;
@@ -452,16 +476,20 @@ export function StyleEditorDrawer({ isOpen, onClose, code, onCodeChange }) {
     // Calculate meter fill percentage (0-21 ratio mapped to 0-100%)
     const getMeterWidth = (ratio) => Math.min(100, (ratio / 21) * 100);
 
-    // Render style card (works for both classDef and inline styles)
+    // Render style card (works for classDef, inline, subgraph, and edge labels)
     const renderStyleCard = (styleItem) => {
         const key = `${styleItem.type}:${styleItem.id}`;
         const fill = pendingChanges[key]?.fill || styleItem.fill;
         const color = pendingChanges[key]?.color || styleItem.color;
 
-
         // Special handling for edge labels (global)
         if (styleItem.type === 'edgeLabel') {
             return renderEdgeLabelCard(styleItem, key, fill, color);
+        }
+
+        // Special handling for subgraph titles
+        if (styleItem.type === 'subgraph') {
+            return renderSubgraphCard(styleItem, key, fill, color);
         }
 
         const { ratio, level } = getContrastRatio(color, fill);
@@ -673,6 +701,179 @@ export function StyleEditorDrawer({ isOpen, onClose, code, onCodeChange }) {
                     </div>
                 </div>
 
+            </div>
+        );
+    };
+
+    // Special card renderer for Subgraph Titles
+    const renderSubgraphCard = (styleItem, key, fill, color) => {
+        const { ratio, level } = getContrastRatio(color, fill);
+        const indicator = getContrastIndicator(level, ratio);
+        const hasNoExplicitStyle = !styleItem.hasExplicitStyle;
+
+        return (
+            <div key={key} style={{ ...styles.classCard, borderLeft: '4px solid #8b5cf6' }}>
+                <div style={styles.classHeader}>
+                    <div style={styles.className}>
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: '24px',
+                            height: '24px',
+                            background: 'linear-gradient(135deg, #c4b5fd 0%, #a78bfa 100%)',
+                            borderRadius: '6px',
+                            color: '#5b21b6'
+                        }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                                <line x1="3" y1="9" x2="21" y2="9" />
+                            </svg>
+                        </div>
+                        <span>{styleItem.id}</span>
+                        <span style={{
+                            fontSize: '9px',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            background: 'rgba(139, 92, 246, 0.15)',
+                            color: '#a78bfa',
+                            fontWeight: '600',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.05em',
+                        }}>subgraph</span>
+                    </div>
+
+                    <button
+                        style={{
+                            ...styles.fixButton,
+                            background: hasNoExplicitStyle ? 'rgba(239, 68, 68, 0.15)' : 'rgba(139, 92, 246, 0.15)',
+                            border: `1px solid ${hasNoExplicitStyle ? 'rgba(239, 68, 68, 0.3)' : 'rgba(139, 92, 246, 0.3)'}`,
+                            color: hasNoExplicitStyle ? '#f87171' : '#a78bfa'
+                        }}
+                        onClick={() => handleFixStyle(styleItem)}
+                    >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+                        </svg>
+                        {t('styleEditor.autoFix')}
+                    </button>
+                </div>
+
+                {/* Warning for subgraphs without explicit style */}
+                {hasNoExplicitStyle && (
+                    <div style={{
+                        fontSize: '11px',
+                        color: '#f87171',
+                        marginBottom: '12px',
+                        padding: '8px',
+                        background: 'rgba(239, 68, 68, 0.1)',
+                        borderRadius: '6px',
+                        border: '1px solid rgba(239, 68, 68, 0.2)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                    }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                            <line x1="12" y1="9" x2="12" y2="13" />
+                            <line x1="12" y1="17" x2="12.01" y2="17" />
+                        </svg>
+                        No explicit style defined - title may be invisible on export
+                    </div>
+                )}
+
+                {/* Title description */}
+                <div style={{
+                    fontSize: '11px',
+                    color: colors.textMuted,
+                    marginBottom: '12px',
+                    padding: '8px',
+                    background: colors.bgHover,
+                    borderRadius: '6px'
+                }}>
+                    Title: "{styleItem.title}"
+                </div>
+
+                {/* Preview Box showing the subgraph title */}
+                <div style={{ 
+                    ...styles.previewBox, 
+                    background: fill, 
+                    color: color, 
+                    marginBottom: '12px',
+                    borderRadius: '8px',
+                    border: `2px solid ${styleItem.stroke || '#333'}`,
+                    position: 'relative'
+                }}>
+                    <div style={{
+                        position: 'absolute',
+                        top: '-10px',
+                        left: '12px',
+                        background: fill,
+                        padding: '0 8px',
+                        fontSize: '12px',
+                        fontWeight: '600'
+                    }}>
+                        {styleItem.title.length > 25 ? styleItem.title.slice(0, 25) + '...' : styleItem.title}
+                    </div>
+                    <div style={{ marginTop: '8px', opacity: 0.5, fontSize: '11px' }}>
+                        (subgraph content)
+                    </div>
+                </div>
+
+                {/* Contrast Meter */}
+                <div style={styles.contrastMeter}>
+                    <div style={styles.contrastLabel}>
+                        <span>{t('styleEditor.contrast')}</span>
+                        <span style={{ ...styles.contrastValue, color: indicator.color }}>
+                            {ratio}:1 {indicator.icon} {indicator.text}
+                        </span>
+                    </div>
+                    <div style={styles.meterTrack}>
+                        <div
+                            style={{
+                                ...styles.meterFill,
+                                width: `${getMeterWidth(ratio)}%`,
+                                background: level === 'FAIL'
+                                    ? 'linear-gradient(90deg, #ef4444 0%, #f87171 100%)'
+                                    : level === 'AA'
+                                        ? 'linear-gradient(90deg, #fbbf24 0%, #fcd34d 100%)'
+                                        : 'linear-gradient(90deg, #22c55e 0%, #4ade80 100%)',
+                            }}
+                        />
+                    </div>
+                    <div style={styles.meterMarkers}>
+                        <span>1</span>
+                        <span style={{ position: 'absolute', left: '21%' }}>4.5</span>
+                        <span style={{ position: 'absolute', left: '33%' }}>7</span>
+                        <span>21+</span>
+                    </div>
+                </div>
+
+                {/* Color Editors */}
+                <div style={styles.colorSection}>
+                    <ColorField
+                        label={t('styleEditor.fill')}
+                        value={fill}
+                        onChange={(newFill) => setPendingChanges(prev => ({
+                            ...prev,
+                            [key]: { ...prev[key], fill: newFill, _type: styleItem.type, _id: styleItem.id }
+                        }))}
+                        palette={COLOR_PALETTES.lightFills.concat(COLOR_PALETTES.darkFills)}
+                        colors={colors}
+                        theme={theme}
+                    />
+                    <ColorField
+                        label={t('styleEditor.textColor')}
+                        value={color}
+                        onChange={(newColor) => setPendingChanges(prev => ({
+                            ...prev,
+                            [key]: { ...prev[key], color: newColor, _type: styleItem.type, _id: styleItem.id }
+                        }))}
+                        palette={COLOR_PALETTES.textColors}
+                        colors={colors}
+                        theme={theme}
+                    />
+                </div>
             </div>
         );
     };

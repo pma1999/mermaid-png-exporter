@@ -744,6 +744,203 @@ export const getEdgeLabelStyle = (code) => {
 };
 
 // =============================================================================
+// SUBGRAPH PARSING
+// =============================================================================
+
+/**
+ * Parse all subgraph definitions from Mermaid code
+ * Extracts subgraph ID and title for contrast analysis
+ * @param {string} code - Mermaid code
+ * @returns {Map<string, {title: string, lineNumber: number, hasExplicitStyle: boolean}>}
+ */
+export const parseSubgraphs = (code) => {
+    const subgraphs = new Map();
+    if (!code) return subgraphs;
+
+    const lines = code.split('\n');
+
+    // Multiple regex patterns to match various subgraph formats:
+    // 1. subgraph ID[Title] or subgraph ID["Title"]
+    // 2. subgraph ID [Title] (with space)
+    // 3. subgraph ID["<b>Title</b><br/>Subtitle"] (with HTML)
+    const subgraphRegex = /^\s*subgraph\s+(\w+)\s*\[([^\]]*)\]/i;
+    // Also match: subgraph ID (without title - ID becomes title)
+    const subgraphSimpleRegex = /^\s*subgraph\s+(\w+)\s*$/i;
+
+    lines.forEach((line, index) => {
+        // Try full format first
+        let match = line.match(subgraphRegex);
+        if (match) {
+            const [, id, title] = match;
+            // Clean HTML tags from title for display
+            const cleanTitle = title
+                .replace(/<[^>]*>/g, ' ')  // Remove HTML tags
+                .replace(/\s+/g, ' ')       // Normalize whitespace
+                .replace(/^["']|["']$/g, '') // Remove quotes
+                .trim();
+            
+            subgraphs.set(id, {
+                id,
+                title: cleanTitle || id,
+                rawTitle: title,
+                lineNumber: index + 1,
+                hasExplicitStyle: false // Will be updated when cross-referencing with styles
+            });
+            return;
+        }
+
+        // Try simple format (no title)
+        match = line.match(subgraphSimpleRegex);
+        if (match) {
+            const [, id] = match;
+            subgraphs.set(id, {
+                id,
+                title: id,
+                rawTitle: id,
+                lineNumber: index + 1,
+                hasExplicitStyle: false
+            });
+        }
+    });
+
+    return subgraphs;
+};
+
+/**
+ * Get styles specifically for subgraphs by cross-referencing with parseInlineStyles
+ * @param {string} code - Mermaid code
+ * @returns {Map<string, {fill?: string, stroke?: string, color?: string, title: string, lineNumber: number}>}
+ */
+export const parseSubgraphStyles = (code) => {
+    const subgraphs = parseSubgraphs(code);
+    const allInlineStyles = parseInlineStyles(code);
+    const subgraphStyles = new Map();
+
+    // For each subgraph, check if there's a matching inline style
+    subgraphs.forEach((subgraphData, subgraphId) => {
+        const inlineStyle = allInlineStyles.get(subgraphId);
+        
+        if (inlineStyle) {
+            // Subgraph has explicit style
+            subgraphStyles.set(subgraphId, {
+                ...inlineStyle,
+                title: subgraphData.title,
+                rawTitle: subgraphData.rawTitle,
+                subgraphLineNumber: subgraphData.lineNumber,
+                hasExplicitStyle: true
+            });
+        } else {
+            // Subgraph without explicit style - needs attention!
+            // Mermaid defaults to theme colors, which may cause visibility issues
+            subgraphStyles.set(subgraphId, {
+                fill: null, // Will use Mermaid default (theme-dependent)
+                stroke: null,
+                color: null, // Title color - critical for visibility
+                title: subgraphData.title,
+                rawTitle: subgraphData.rawTitle,
+                lineNumber: subgraphData.lineNumber,
+                hasExplicitStyle: false
+            });
+        }
+    });
+
+    return subgraphStyles;
+};
+
+/**
+ * Update an existing subgraph style statement in the code
+ * @param {string} code - Original Mermaid code
+ * @param {string} subgraphId - Subgraph ID to update
+ * @param {Object} newProps - New properties {fill?, stroke?, color?}
+ * @returns {string} - Modified code
+ */
+export const updateSubgraphStyle = (code, subgraphId, newProps) => {
+    if (!code || !subgraphId) return code;
+
+    // First check if a style statement already exists for this subgraph
+    const inlineStyles = parseInlineStyles(code);
+    const hasExistingStyle = inlineStyles.has(subgraphId);
+
+    if (hasExistingStyle) {
+        // Update existing style using the inline style updater
+        return updateInlineStyle(code, subgraphId, newProps);
+    } else {
+        // Create a new style statement for the subgraph
+        return createSubgraphStyle(code, subgraphId, newProps);
+    }
+};
+
+/**
+ * Create a new style statement for a subgraph
+ * Inserts the style after the subgraph's 'end' keyword
+ * @param {string} code - Original Mermaid code
+ * @param {string} subgraphId - Subgraph ID
+ * @param {Object} props - Properties {fill?, stroke?, color?}
+ * @returns {string} - Modified code
+ */
+export const createSubgraphStyle = (code, subgraphId, props) => {
+    if (!code || !subgraphId) return code;
+
+    const lines = code.split('\n');
+    
+    // Find the subgraph definition line
+    const subgraphRegex = new RegExp(`^\\s*subgraph\\s+${subgraphId}(?:\\s*\\[|\\s*$)`, 'i');
+    let subgraphStartLine = -1;
+    let subgraphEndLine = -1;
+    let nestingLevel = 0;
+    let inTargetSubgraph = false;
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        
+        if (subgraphRegex.test(lines[i])) {
+            subgraphStartLine = i;
+            inTargetSubgraph = true;
+            nestingLevel = 1;
+            continue;
+        }
+
+        if (inTargetSubgraph) {
+            // Count nested subgraphs
+            if (/^\s*subgraph\s+/i.test(line)) {
+                nestingLevel++;
+            }
+            if (/^\s*end\s*$/i.test(line)) {
+                nestingLevel--;
+                if (nestingLevel === 0) {
+                    subgraphEndLine = i;
+                    break;
+                }
+            }
+        }
+    }
+
+    // Build the style properties string
+    const propsArray = [];
+    if (props.fill) propsArray.push(`fill:${props.fill}`);
+    if (props.stroke) propsArray.push(`stroke:${props.stroke}`);
+    if (props.color) propsArray.push(`color:${props.color}`);
+    if (props.strokeWidth) propsArray.push(`stroke-width:${props.strokeWidth}`);
+
+    // If no props, at minimum add the color for visibility
+    if (propsArray.length === 0 && props.color === undefined) {
+        propsArray.push('color:#000000');
+    }
+
+    const styleStatement = `    style ${subgraphId} ${propsArray.join(',')}`;
+
+    // Insert after the subgraph's end, or at the end of the code
+    if (subgraphEndLine !== -1) {
+        lines.splice(subgraphEndLine + 1, 0, styleStatement);
+    } else {
+        // Fallback: append to end of code
+        lines.push(styleStatement);
+    }
+
+    return lines.join('\n');
+};
+
+// =============================================================================
 // INLINE STYLE PARSING (style NodeID fill:...,color:...)
 // =============================================================================
 
@@ -842,12 +1039,16 @@ export const updateInlineStyle = (code, nodeId, newProps) => {
 };
 
 /**
- * Analyze ALL styles (both classDef and inline) for contrast issues
+ * Analyze ALL styles (classDef, inline, subgraph, and edge labels) for contrast issues
  * @param {string} code
- * @returns {Array<{id: string, type: 'classDef' | 'inline', fill: string, color: string, contrast: object, suggestedColor: string, needsFix: boolean, lineNumber: number}>}
+ * @returns {Array<{id: string, type: 'classDef' | 'inline' | 'subgraph' | 'edgeLabel', fill: string, color: string, contrast: object, suggestedColor: string, needsFix: boolean, lineNumber: number}>}
  */
 export const analyzeAllStyles = (code) => {
     const results = [];
+
+    // Get all subgraph IDs to exclude them from inline styles analysis
+    const subgraphStyles = parseSubgraphStyles(code);
+    const subgraphIds = new Set(subgraphStyles.keys());
 
     // Analyze classDef styles
     const classDefs = parseClassDefs(code);
@@ -870,9 +1071,12 @@ export const analyzeAllStyles = (code) => {
         });
     });
 
-    // Analyze inline styles
+    // Analyze inline styles (excluding subgraphs - they get their own section)
     const inlineStyles = parseInlineStyles(code);
     inlineStyles.forEach((props, nodeId) => {
+        // Skip if this is a subgraph - handled separately
+        if (subgraphIds.has(nodeId)) return;
+
         const fill = props.fill || '#ffffff';
         const color = props.color || 'white';
         const contrast = getContrastRatio(color, fill);
@@ -891,7 +1095,48 @@ export const analyzeAllStyles = (code) => {
         });
     });
 
+    // Analyze subgraph title styles
+    // Subgraph titles are critical for visibility - they often default to white text
+    subgraphStyles.forEach((props, subgraphId) => {
+        // For subgraphs, the background is the 'fill' of the cluster rect
+        // and 'color' controls the title text color
+        // 
+        // Mermaid defaults for neutral theme:
+        // - clusterBkg: #ffffde (light yellow) or similar light color
+        // - Title text: often inherits from primaryTextColor which can be white
+        //
+        // For safety, if no explicit fill, assume light background (#f5f5f5)
+        // If no explicit color, assume potential issue (white text)
+        
+        const fill = props.fill || '#f5f5f5'; // Default cluster background (light)
+        const color = props.color || '#ffffff'; // Assume white if not specified - often the problem!
+        
+        const contrast = getContrastRatio(color, fill);
+        const suggestedColor = suggestTextColor(fill);
+        
+        // Mark as needing fix if:
+        // 1. No explicit color is set (could be white on light)
+        // 2. Explicit color has poor contrast
+        const needsFix = !props.hasExplicitStyle || 
+                         !props.color || 
+                         contrast.level === 'FAIL';
 
+        results.push({
+            id: subgraphId,
+            type: 'subgraph',
+            fill,
+            color,
+            stroke: props.stroke,
+            title: props.title,
+            rawTitle: props.rawTitle,
+            contrast,
+            suggestedColor,
+            needsFix,
+            lineNumber: props.lineNumber || props.subgraphLineNumber,
+            hasExplicitStyle: props.hasExplicitStyle,
+            description: `Subgraph title: "${props.title}"`
+        });
+    });
 
     // Analyze edge labels (GLOBAL visibility check)
     const edgeLabels = parseEdgeLabels(code);
@@ -909,44 +1154,76 @@ export const analyzeAllStyles = (code) => {
 
         // Check ALL labels with the same global style
         const contrast = getContrastRatio(currentStyle.textColor, bg);
-        const needsFix = contrast.level === 'FAIL';
         const suggestedColor = suggestTextColor(bg);
 
-        if (true) {
-            // Add a SINGLE global entry for all edge labels
-            results.push({
-                id: 'Global Edge Labels', // Special ID
-                type: 'edgeLabel',       // Special Type
-                fill: bg,
-                color: currentStyle.textColor,
-                count: edgeLabels.length,
-                contrast,
-                suggestedColor,
-                needsFix: true, // ALWAYS allow fixing edge labels as they are tricky
-                lineNumber: 1, // Global
-                description: `${edgeLabels.length} edge labels found (e.g. "${edgeLabels[0].text}")`
-            });
-        }
+        // Add a SINGLE global entry for all edge labels
+        results.push({
+            id: 'Global Edge Labels', // Special ID
+            type: 'edgeLabel',       // Special Type
+            fill: bg,
+            color: currentStyle.textColor,
+            count: edgeLabels.length,
+            contrast,
+            suggestedColor,
+            needsFix: true, // ALWAYS allow fixing edge labels as they are tricky
+            lineNumber: 1, // Global
+            description: `${edgeLabels.length} edge labels found (e.g. "${edgeLabels[0].text}")`
+        });
     }
 
     return results;
 };
 
 /**
- * Update any style (classDef or inline) based on type
+ * Update any style (classDef, inline, subgraph, or edgeLabel) based on type
  * @param {string} code
- * @param {string} id - className or nodeId
- * @param {'classDef' | 'inline'} type
+ * @param {string} id - className, nodeId, or subgraphId
+ * @param {'classDef' | 'inline' | 'subgraph' | 'edgeLabel'} type
  * @param {Object} newProps
  * @returns {string}
  */
 export const updateStyle = (code, id, type, newProps) => {
     if (type === 'classDef') {
         return updateClassDef(code, id, newProps);
+    } else if (type === 'subgraph') {
+        // Subgraph title colors in Mermaid are NOT controlled by `style SubgraphID color:...`
+        // Instead, they are controlled by themeVariables (titleColor) and CSS
+        // We need to:
+        // 1. Add inline style for fill (background) - this works
+        // 2. Inject global CSS for title text color via themeCSS - this is what actually works
+        
+        let updatedCode = code;
+        
+        // First, update/create the inline style for fill (background)
+        if (newProps.fill) {
+            updatedCode = updateSubgraphStyle(updatedCode, id, { fill: newProps.fill, stroke: newProps.stroke });
+        }
+        
+        // Then, inject global CSS for cluster label text colors
+        // This is the only reliable way to change subgraph title colors in Mermaid
+        if (newProps.color) {
+            updatedCode = injectSubgraphTitleCSS(updatedCode, newProps.color);
+        }
+        
+        return updatedCode;
     } else if (type === 'edgeLabel') {
         // Update global init directive for edge labels
         // We use multiple text color variables to ensure it works across different themes/diagram types
         // tertiaryTextColor often controls edge labels, but some themes use secondaryTextColor
+        // IMPORTANT: We need to MERGE with existing themeCSS, not replace it
+        const initData = parseInitDirective(code);
+        let existingCSS = '';
+        if (initData.exists && !initData.error && initData.config.themeCSS) {
+            existingCSS = initData.config.themeCSS;
+            // Remove any existing edgeLabel rules to avoid duplication
+            existingCSS = existingCSS.replace(/\.root \.edgeLabel[^}]*\}/g, '').trim();
+            existingCSS = existingCSS.replace(/\.edgeLabel rect[^}]*\}/g, '').trim();
+        }
+        
+        const edgeLabelCSS = `.root .edgeLabel { color: ${newProps.color} !important; opacity: 1 !important; } .root .edgeLabel span, .root .edgeLabel div, .root .edgeLabel p { color: ${newProps.color} !important; opacity: 1 !important; } .edgeLabel rect { fill: ${newProps.fill === '#ffffff' ? 'transparent' : newProps.fill} !important; opacity: ${newProps.fill === '#ffffff' ? '0' : '1'} !important; }`;
+        
+        const combinedCSS = existingCSS ? `${existingCSS} ${edgeLabelCSS}` : edgeLabelCSS;
+        
         return updateInitDirective(code, {
             themeVariables: {
                 tertiaryTextColor: newProps.color,
@@ -956,7 +1233,7 @@ export const updateStyle = (code, id, type, newProps) => {
                 // edgeLabelBackground explicitly controls the background
                 edgeLabelBackground: newProps.fill === '#ffffff' ? 'transparent' : newProps.fill
             },
-            themeCSS: `.root .edgeLabel { color: ${newProps.color} !important; opacity: 1 !important; } .root .edgeLabel span, .root .edgeLabel div, .root .edgeLabel p { color: ${newProps.color} !important; opacity: 1 !important; } .edgeLabel rect { fill: ${newProps.fill === '#ffffff' ? 'transparent' : newProps.fill} !important; opacity: ${newProps.fill === '#ffffff' ? '0' : '1'} !important; }`
+            themeCSS: combinedCSS
         });
     } else {
         return updateInlineStyle(code, id, newProps);
@@ -964,7 +1241,65 @@ export const updateStyle = (code, id, type, newProps) => {
 };
 
 /**
- * Auto-fix all contrast issues (both classDef and inline) using SMART algorithm
+ * Inject CSS for subgraph title colors via init directive
+ * This is necessary because Mermaid doesn't support per-subgraph title colors via style statements
+ * 
+ * SPECIFICITY CHALLENGE:
+ * Mermaid's classDef CSS uses ID selectors: "#mermaid-xxx .root span { color: white !important; }"
+ * ID selectors (100) + class (10) + element (1) = 111 specificity
+ * 
+ * To beat this with class-only selectors, we use :not() pseudo-class which adds ID-level specificity
+ * without needing to know the actual ID. Example: ".cluster-label:not(#_) span" = 100 + 10 + 1 = 111
+ * 
+ * @param {string} code - Mermaid code
+ * @param {string} titleColor - Color for subgraph titles
+ * @returns {string} - Modified code
+ */
+export const injectSubgraphTitleCSS = (code, titleColor) => {
+    const initData = parseInitDirective(code);
+    
+    // Build CSS for cluster labels (subgraph titles)
+    // Using :not(#_) adds ID-level specificity (100) to beat "#id .class" selectors
+    // Combined with !important, this should override any classDef rules
+    const clusterLabelCSS = `
+        .cluster-label:not(#_) { color: ${titleColor} !important; fill: ${titleColor} !important; }
+        .cluster-label:not(#_) text { fill: ${titleColor} !important; color: ${titleColor} !important; }
+        .cluster-label:not(#_) span { color: ${titleColor} !important; fill: ${titleColor} !important; }
+        .cluster-label:not(#_) span b { color: ${titleColor} !important; fill: ${titleColor} !important; }
+        .cluster-label:not(#_) span i { color: ${titleColor} !important; fill: ${titleColor} !important; }
+        .cluster-label:not(#_) foreignObject { color: ${titleColor} !important; }
+        .cluster-label:not(#_) foreignObject div { color: ${titleColor} !important; }
+        .cluster-label:not(#_) foreignObject span { color: ${titleColor} !important; fill: ${titleColor} !important; }
+        .cluster-label:not(#_) foreignObject span b { color: ${titleColor} !important; }
+        .cluster-label:not(#_) .nodeLabel { color: ${titleColor} !important; fill: ${titleColor} !important; }
+        g.cluster-label:not(#_) span { color: ${titleColor} !important; fill: ${titleColor} !important; }
+        g.cluster-label:not(#_) span b { color: ${titleColor} !important; fill: ${titleColor} !important; }
+        .cluster:not(#_) .nodeLabel { color: ${titleColor} !important; fill: ${titleColor} !important; }
+    `.replace(/\s+/g, ' ').trim();
+    
+    // Get existing themeCSS and append/merge our cluster label CSS
+    let existingCSS = '';
+    if (initData.exists && !initData.error && initData.config.themeCSS) {
+        existingCSS = initData.config.themeCSS;
+        // Remove any existing cluster-label rules to avoid duplication
+        existingCSS = existingCSS.replace(/\.cluster-label[^}]*\}/g, '').trim();
+        existingCSS = existingCSS.replace(/\.cluster[^-][^}]*nodeLabel[^}]*\}/g, '').trim();
+        existingCSS = existingCSS.replace(/g\.cluster-label[^}]*\}/g, '').trim();
+    }
+    
+    const combinedCSS = existingCSS ? `${existingCSS} ${clusterLabelCSS}` : clusterLabelCSS;
+    
+    return updateInitDirective(code, {
+        themeVariables: {
+            titleColor: titleColor, // Also set the themeVariable for good measure
+            clusterBkg: '#f5f5f5'   // Ensure cluster background is visible
+        },
+        themeCSS: combinedCSS
+    });
+};
+
+/**
+ * Auto-fix all contrast issues (classDef, inline, subgraph, and edgeLabel) using SMART algorithm
  * @param {string} code
  * @returns {{code: string, fixes: Array}}
  */
@@ -972,6 +1307,10 @@ export const autoFixAllStyles = (code) => {
     const issues = analyzeAllStyles(code);
     const fixes = [];
     let newCode = code;
+
+    // Collect all subgraphs that need fixing to apply a single global CSS fix
+    const subgraphsToFix = issues.filter(i => i.type === 'subgraph' && i.needsFix);
+    let subgraphCSSApplied = false;
 
     issues.forEach((issue) => {
         if (issue.needsFix) {
@@ -991,7 +1330,34 @@ export const autoFixAllStyles = (code) => {
                 return; // Continue to next issue
             }
 
-            // Use smart fix algorithm
+            // Special handling for subgraph titles
+            // Mermaid doesn't support per-subgraph title colors via style statements
+            // So we apply a single global CSS fix for ALL subgraph titles
+            if (issue.type === 'subgraph') {
+                // Add fill style for individual subgraph if needed
+                if (!issue.hasExplicitStyle || !issue.fill) {
+                    newCode = updateSubgraphStyle(newCode, issue.id, { fill: '#f5f5f5' });
+                }
+                
+                // Apply global CSS for title colors only once
+                if (!subgraphCSSApplied && subgraphsToFix.length > 0) {
+                    newCode = injectSubgraphTitleCSS(newCode, '#000000');
+                    subgraphCSSApplied = true;
+                }
+                
+                fixes.push({
+                    id: issue.id,
+                    type: issue.type,
+                    strategy: 'subgraph_title_fix',
+                    reason: `Fixed subgraph title "${issue.title}" visibility`,
+                    oldColor: issue.color,
+                    newColor: '#000000',
+                    improvement: { from: issue.contrast.ratio, to: 21 },
+                });
+                return; // Continue to next issue
+            }
+
+            // Use smart fix algorithm for classDef and inline styles
             const smartFix = smartContrastFix(issue.fill, issue.color);
 
             if (smartFix.strategy === 'none') return;

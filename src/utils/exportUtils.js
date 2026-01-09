@@ -57,6 +57,58 @@ export const exportSvgToPng = async (svgElement, { scale = 3, transparent = fals
         fill: #000000 !important;
     }
 
+    /* =====================================================
+       SUBGRAPH TITLE VISIBILITY RULES
+       Ensures cluster/subgraph titles are always visible
+       on PNG export regardless of theme settings
+       ===================================================== */
+    
+    /* Cluster label container and text elements */
+    ${selectorId} .cluster-label,
+    ${selectorId} .cluster-label text,
+    ${selectorId} .cluster-label span,
+    ${selectorId} .cluster-label div,
+    ${selectorId} .cluster-label p,
+    .cluster-label,
+    .cluster-label text,
+    .cluster-label span,
+    .cluster-label div,
+    .cluster-label p {
+        color: #000000 !important;
+        fill: #000000 !important;
+    }
+    
+    /* Mermaid uses foreignObject for HTML content in cluster labels */
+    ${selectorId} .cluster-label foreignObject,
+    ${selectorId} .cluster-label foreignObject *,
+    .cluster-label foreignObject,
+    .cluster-label foreignObject * {
+        color: #000000 !important;
+        fill: #000000 !important;
+    }
+    
+    /* Target nodeLabel class inside clusters (used for title text) */
+    ${selectorId} .cluster .nodeLabel,
+    ${selectorId} .cluster-label .nodeLabel,
+    .cluster .nodeLabel,
+    .cluster-label .nodeLabel {
+        color: #000000 !important;
+        fill: #000000 !important;
+    }
+    
+    /* Handle any tspan elements within cluster labels */
+    ${selectorId} .cluster-label tspan,
+    .cluster-label tspan {
+        fill: #000000 !important;
+    }
+    
+    /* Ensure cluster title rect/background doesn't interfere */
+    ${selectorId} .cluster-label rect,
+    .cluster-label rect {
+        fill: transparent !important;
+        stroke: none !important;
+    }
+
     .cluster rect { stroke-width: 2px; }
     .flowchart-link { stroke-width: 2px; }
     .marker { fill: #333; }

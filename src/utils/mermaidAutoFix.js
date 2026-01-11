@@ -1,5 +1,5 @@
 /**
- * Sistema de Auto-corrección de código Mermaid v2.5
+ * Sistema de Auto-corrección de código Mermaid v2.6
  * 
  * PRINCIPIO FUNDAMENTAL: "First, do no harm"
  * - Solo modificar nodos que CLARAMENTE tienen problemas
@@ -15,6 +15,8 @@
  * v2.3 - Fix para sintaxis inválida después de nodos: ]:(text), }:(text), etc.
  * v2.4 - Fix para edge labels con paréntesis: -->|texto (problemático)| 
  * v2.5 - Fix para directivas 'style' en mindmaps (no soportadas, se renderizan como texto)
+ * v2.6 - Fix para edge labels con delimitadores incorrectos: -->|texto] → -->|texto|
+ *        Detecta y corrige cuando se usa ], }, ) en lugar de | para cerrar edge labels
  */
 
 // =============================================================================
@@ -499,7 +501,214 @@ const fixInvalidTrailingSyntax = (line) => {
 };
 
 // =============================================================================
-// FIX PARA EDGE LABELS
+// FIX PARA EDGE LABELS CON DELIMITADORES INCORRECTOS
+// =============================================================================
+
+/**
+ * Detecta y corrige edge labels con delimitadores de cierre INCORRECTOS.
+ * 
+ * Este es un error común de tipeo donde el usuario usa ] } ) en lugar de |
+ * para cerrar un edge label.
+ * 
+ * Casos detectados:
+ *   A -->|texto] B[nodo]   →  A -->|texto| B[nodo]   (] debería ser |)
+ *   A -->|texto} B{nodo}   →  A -->|texto| B{nodo}   (} debería ser |)
+ *   A -->|texto) B(nodo)   →  A -->|texto| B(nodo)   () debería ser |)
+ *   A -.->|texto<br/>más] B[x]  →  corrige también con HTML tags
+ * 
+ * Estrategia de detección SEGURA:
+ * Solo corregimos cuando el patrón es inequívoco:
+ *   FLECHA | contenido DELIM_INCORRECTO ESPACIO ID DELIM_NODO
+ * 
+ * Donde:
+ *   - FLECHA: -->, -.->, ==>, --, --o, --x, <-->, o--, x--
+ *   - DELIM_INCORRECTO: ], }, ) cuando debería ser |
+ *   - ID: identificador alfanumérico del siguiente nodo
+ *   - DELIM_NODO: [, {, (, ((, ([, [[, [(, etc.
+ * 
+ * La presencia de un nodo DESPUÉS confirma que era un edge label entre dos nodos,
+ * haciendo la corrección 100% segura.
+ * 
+ * @param {string} line - Línea a procesar
+ * @returns {{fixed: string, fixes: Array<{original: string, fixed: string, wrongDelim: string}>}}
+ */
+const fixMalformedEdgeLabels = (line) => {
+    const fixes = [];
+
+    // ==========================================================================
+    // PATRÓN PRINCIPAL: Edge label seguido de nodo
+    // ==========================================================================
+    // Regex explicación:
+    // (-->|...|x--)      - Grupo 1: Tipo de flecha
+    // \s*                - Espacios opcionales entre flecha y pipe
+    // \|                 - Pipe de apertura del label (literal)
+    // ([^|\]})]+)        - Grupo 2: Contenido del label (sin |, ], }, ))
+    //                      NOTA: Permitimos <, >, /, etc. para HTML tags como <br/>
+    // ([\]\})])          - Grupo 3: Delimitador INCORRECTO (], }, ))
+    // \s+                - Al menos un espacio (separador obligatorio antes del nodo)
+    // (\w+)              - Grupo 4: ID del siguiente nodo
+    // \s*                - Espacios opcionales
+    // ([\[\(\{]|         - Grupo 5: Delimitador de apertura del nodo O flecha:
+    //   \(\(|\(\[|         - Formas especiales: ((, ([
+    //   \[\[|\[\(|         - Formas especiales: [[, [(
+    //   \{\{|              - Forma especial: {{
+    //   \[\/|\[\\|         - Formas especiales: [/, [\
+    //   >|                 - Forma flag: >
+    //   -->|-.->|==>|      - Flechas (para nodos sin delimitador seguidos de otra conexión)
+    //   --o|--x|--|        - Más tipos de flechas
+    //   <-->|o--|x--)      - Más tipos de flechas
+    // ==========================================================================
+    
+    const malformedWithNodePattern = /(-->|--o|--x|-\.->|==>|--|<-->|o--|x--)\s*\|([^|\]})]+)([\]\})])\s+(\w+)\s*([\[\(\{]|\(\(|\(\[|\[\[|\[\(|\{\{|\[\/|\[\\|>|-->|--o|--x|-\.->|==>|--|<-->|o--|x--)/g;
+
+    let match;
+    const processedRanges = []; // Para evitar solapamientos
+
+    while ((match = malformedWithNodePattern.exec(line)) !== null) {
+        const [fullMatch, arrow, labelContent, wrongDelim, nextNodeId, nodeDelim] = match;
+        const start = match.index;
+        const end = start + fullMatch.length;
+
+        // Verificar que no estamos procesando un rango ya corregido
+        const overlaps = processedRanges.some(r => 
+            (start >= r.start && start < r.end) || (end > r.start && end <= r.end)
+        );
+        if (overlaps) continue;
+
+        // =======================================================================
+        // VALIDACIÓN DE SEGURIDAD: Verificar que el contenido NO está entrecomillado
+        // Si el label está entrecomillado como |"texto]"|, el ] es parte del texto
+        // y NO debe corregirse.
+        // =======================================================================
+        const trimmedContent = labelContent.trim();
+        
+        // Si el contenido empieza con comilla, verificar si el ] está dentro de las comillas
+        if (trimmedContent.startsWith('"') || trimmedContent.startsWith("'")) {
+            // Analizar si las comillas están balanceadas
+            const quoteChar = trimmedContent[0];
+            let quoteCount = 0;
+            for (const char of labelContent) {
+                if (char === quoteChar) quoteCount++;
+            }
+            // Si hay número impar de comillas, el delimitador podría estar dentro
+            // En ese caso, NO corregir para ser conservadores
+            if (quoteCount % 2 !== 0) {
+                continue;
+            }
+        }
+
+        // =======================================================================
+        // CONSTRUIR LA CORRECCIÓN
+        // =======================================================================
+        // Reemplazar el delimitador incorrecto por |
+        // Mantener todo lo demás igual
+        // 
+        // NOTA: Si nodeDelim es una flecha (el nodo siguiente no tiene delimitador
+        // explícito, como en "A -->|text] B -->"), debemos preservar el espacio
+        // antes de la flecha pero no "pegar" el nodeDelim al ID.
+        const isNextArrow = /^(-->|--o|--x|-\.->|==>|--|<-->|o--|x--)/.test(nodeDelim);
+        const correctedMatch = isNextArrow 
+            ? `${arrow}|${labelContent}| ${nextNodeId} ${nodeDelim}`
+            : `${arrow}|${labelContent}| ${nextNodeId}${nodeDelim}`;
+
+        fixes.push({
+            original: fullMatch,
+            fixed: correctedMatch,
+            wrongDelim: wrongDelim,
+            start: start,
+            end: end,
+            type: 'malformed_edge_label_delimiter'
+        });
+
+        processedRanges.push({ start, end });
+    }
+
+    // ==========================================================================
+    // PATRÓN SECUNDARIO: Edge label al final de línea (sin nodo después)
+    // ==========================================================================
+    // Menos común pero también es un error claro.
+    // Patrón: flecha|contenido] al final de línea o antes de comentario
+    // 
+    // IMPORTANTE: Este patrón es más arriesgado, solo lo aplicamos si:
+    // 1. La línea NO continúa con más contenido significativo
+    // 2. O continúa con un comentario %%
+    // ==========================================================================
+    
+    const malformedAtEndPattern = /(-->|--o|--x|-\.->|==>|--|<-->|o--|x--)\s*\|([^|\]})]+)([\]\})])(\s*(?:%%.*)?$)/g;
+
+    while ((match = malformedAtEndPattern.exec(line)) !== null) {
+        const [fullMatch, arrow, labelContent, wrongDelim, trailing] = match;
+        const start = match.index;
+        const end = start + fullMatch.length;
+
+        // Verificar solapamiento con fixes anteriores
+        const overlaps = processedRanges.some(r => 
+            (start >= r.start && start < r.end) || (end > r.start && end <= r.end)
+        );
+        if (overlaps) continue;
+
+        // Misma validación de comillas
+        const trimmedContent = labelContent.trim();
+        if (trimmedContent.startsWith('"') || trimmedContent.startsWith("'")) {
+            const quoteChar = trimmedContent[0];
+            let quoteCount = 0;
+            for (const char of labelContent) {
+                if (char === quoteChar) quoteCount++;
+            }
+            if (quoteCount % 2 !== 0) continue;
+        }
+
+        // Para este patrón, necesitamos que el contenido tenga algo sustancial
+        // (evitar falsos positivos con líneas parciales o comentarios)
+        if (labelContent.trim().length < 1) continue;
+
+        const correctedMatch = `${arrow}|${labelContent}|${trailing}`;
+
+        fixes.push({
+            original: fullMatch,
+            fixed: correctedMatch,
+            wrongDelim: wrongDelim,
+            start: start,
+            end: end,
+            type: 'malformed_edge_label_at_end'
+        });
+
+        processedRanges.push({ start, end });
+    }
+
+    // ==========================================================================
+    // APLICAR FIXES de derecha a izquierda
+    // ==========================================================================
+    let result = line;
+    const sortedFixes = [...fixes].sort((a, b) => b.start - a.start);
+
+    for (const fix of sortedFixes) {
+        result = result.slice(0, fix.start) + fix.fixed + result.slice(fix.end);
+    }
+
+    // ==========================================================================
+    // ITERACIÓN: Si hubo cambios, ejecutar de nuevo para capturar casos
+    // que no se detectaron en la primera pasada (cuando un fix consume
+    // parte del string que otro fix necesitaba)
+    // ==========================================================================
+    if (fixes.length > 0) {
+        const secondPass = fixMalformedEdgeLabels(result);
+        if (secondPass.fixes.length > 0) {
+            return {
+                fixed: secondPass.fixed,
+                fixes: [...fixes, ...secondPass.fixes]
+            };
+        }
+    }
+
+    return {
+        fixed: result,
+        fixes: fixes
+    };
+};
+
+// =============================================================================
+// FIX PARA EDGE LABELS CON CONTENIDO PROBLEMÁTICO
 // =============================================================================
 
 /**
@@ -1246,6 +1455,23 @@ export const autoFixMermaidCode = (code) => {
             currentLine = trailingResult.fixed;
         }
 
+        // FIX ESPECIAL: Edge labels con delimitadores INCORRECTOS
+        // Patrones como -->|texto] en lugar de -->|texto| (] debería ser |)
+        // DEBE ejecutarse ANTES de fixEdgeLabels para corregir la estructura primero
+        const malformedEdgeLabelResult = fixMalformedEdgeLabels(currentLine);
+
+        if (malformedEdgeLabelResult.fixes.length > 0) {
+            malformedEdgeLabelResult.fixes.forEach(fix => {
+                allFixes.push({
+                    line: index + 1,
+                    original: `edge label delimiter: ${fix.wrongDelim} → |`,
+                    fixed: `edge label: ${fix.fixed}`,
+                    type: fix.type
+                });
+            });
+            currentLine = malformedEdgeLabelResult.fixed;
+        }
+
         // FIX ESPECIAL: Edge labels con paréntesis o comillas
         // Patrones como -->|texto (problemático)| causan parse error "got PS"
         const edgeLabelResult = fixEdgeLabels(currentLine);
@@ -1381,7 +1607,20 @@ export const analyzeCode = (code) => {
             return;
         }
 
-        // Detectar problemas en edge labels
+        // Detectar edge labels con delimitadores incorrectos (] } ) en lugar de |)
+        const malformedEdgeLabelResult = fixMalformedEdgeLabels(line);
+        if (malformedEdgeLabelResult.fixes.length > 0) {
+            malformedEdgeLabelResult.fixes.forEach(fix => {
+                issues.push({
+                    line: index + 1,
+                    type: 'malformed_edge_label_delimiter',
+                    content: fix.original,
+                    description: `Edge label cerrado con '${fix.wrongDelim}' en lugar de '|'`
+                });
+            });
+        }
+
+        // Detectar problemas en edge labels (contenido problemático)
         const edgeLabelResult = fixEdgeLabels(line);
         if (edgeLabelResult.fixes.length > 0) {
             edgeLabelResult.fixes.forEach(fix => {

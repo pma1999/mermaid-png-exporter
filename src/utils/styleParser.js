@@ -614,8 +614,10 @@ export const autoFixAllContrast = (code) => {
 
 /**
  * Parse all edge labels from Mermaid code
+ * Supports both pipe format (-->|text|) and inline format (-- text -->)
+ * 
  * @param {string} code - Mermaid code
- * @returns {Array<{text: string, arrow: string, lineNumber: number, id: string}>}
+ * @returns {Array<{text: string, arrow: string, format: string, lineNumber: number, id: string}>}
  */
 export const parseEdgeLabels = (code) => {
     const labels = [];
@@ -623,21 +625,86 @@ export const parseEdgeLabels = (code) => {
 
     const lines = code.split('\n');
 
-    // Regex matches arrows followed by |text|
+    // ==========================================================================
+    // FORMAT 1: Pipe format - arrows followed by |text|
+    // Examples: -->|text|, -.->|text|, ==>|text|
     // Captures: 
-    // 1. Arrow type (-->, -.->, etc)
-    // 2. Label content (inside pipes)
-    const edgeLabelRegex = /(-->|--o|--x|-\.->|==>|--|<-->|o--|x--)\s*\|([^|]+)\|/g;
+    //   1. Arrow type (-->, -.->, etc)
+    //   2. Label content (inside pipes)
+    // ==========================================================================
+    const pipeLabelRegex = /(-->|--o|--x|-\.->|==>|--|<-->|o--|x--)\s*\|([^|]+)\|/g;
+
+    // ==========================================================================
+    // FORMAT 2: Inline format - text between edge markers
+    // Examples:
+    //   - A -- text --> B     (solid arrow with label)
+    //   - A -- text --- B     (solid line with label)
+    //   - A -. text .-> B     (dotted arrow with label)
+    //   - A == text ==> B     (thick arrow with label)
+    // 
+    // Regex breakdown:
+    //   Pattern 1: --\s+(.+?)\s+(-->|---)  - solid: -- text --> or -- text ---
+    //   Pattern 2: -\.\s+(.+?)\s+\.->      - dotted: -. text .->
+    //   Pattern 3: ==\s+(.+?)\s+==>        - thick: == text ==>
+    // ==========================================================================
+    const inlineSolidRegex = /--\s+(.+?)\s+(-->|---)/g;
+    const inlineDottedRegex = /-\.\s+(.+?)\s+\.->/g;
+    const inlineThickRegex = /==\s+(.+?)\s+==>/g;
 
     lines.forEach((line, index) => {
+        // Reset regex lastIndex for each line (important for global regex reuse)
+        pipeLabelRegex.lastIndex = 0;
+        inlineSolidRegex.lastIndex = 0;
+        inlineDottedRegex.lastIndex = 0;
+        inlineThickRegex.lastIndex = 0;
+
         let match;
-        while ((match = edgeLabelRegex.exec(line)) !== null) {
+
+        // Search for pipe format labels
+        while ((match = pipeLabelRegex.exec(line)) !== null) {
             labels.push({
                 text: match[2],
                 arrow: match[1],
+                format: 'pipe',
                 lineNumber: index + 1,
                 original: match[0],
-                id: `edge_L${index + 1}_${match.index}` // Unique ID based on position
+                id: `edge_L${index + 1}_pipe_${match.index}`
+            });
+        }
+
+        // Search for inline solid format (-- text --> or -- text ---)
+        while ((match = inlineSolidRegex.exec(line)) !== null) {
+            labels.push({
+                text: match[1].trim(),
+                arrow: match[2], // --> or ---
+                format: 'inline',
+                lineNumber: index + 1,
+                original: match[0],
+                id: `edge_L${index + 1}_inline_${match.index}`
+            });
+        }
+
+        // Search for inline dotted format (-. text .->)
+        while ((match = inlineDottedRegex.exec(line)) !== null) {
+            labels.push({
+                text: match[1].trim(),
+                arrow: '.->',
+                format: 'inline',
+                lineNumber: index + 1,
+                original: match[0],
+                id: `edge_L${index + 1}_dotted_${match.index}`
+            });
+        }
+
+        // Search for inline thick format (== text ==>)
+        while ((match = inlineThickRegex.exec(line)) !== null) {
+            labels.push({
+                text: match[1].trim(),
+                arrow: '==>',
+                format: 'inline',
+                lineNumber: index + 1,
+                original: match[0],
+                id: `edge_L${index + 1}_thick_${match.index}`
             });
         }
     });

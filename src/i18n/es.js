@@ -66,6 +66,7 @@ export const es = {
         fill: 'Relleno',
         textColor: 'Texto',
         fixedViaCSS: 'Corregido via CSS',
+        unstyledNodeInfo: 'Este nodo no tiene estilo. Al corregir se creará una clase dedicada para garantizar visibilidad.',
     },
     examples: {
         flowchart: `flowchart LR

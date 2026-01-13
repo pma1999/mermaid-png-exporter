@@ -712,6 +712,411 @@ export const parseEdgeLabels = (code) => {
     return labels;
 };
 
+// =============================================================================
+// NODE PARSING - Detect all nodes and their class assignments
+// =============================================================================
+
+/**
+ * Mermaid default theme colors for nodes without explicit styling
+ * These are the fallback colors when a node has no class assigned
+ */
+export const MERMAID_DEFAULT_COLORS = {
+    // Default theme
+    default: {
+        fill: '#ECECFF',      // Light lavender
+        stroke: '#9370DB',    // Medium purple
+        color: '#333333',     // Dark gray text
+    },
+    // Forest theme
+    forest: {
+        fill: '#cde498',
+        stroke: '#13540c',
+        color: '#333333',
+    },
+    // Dark theme  
+    dark: {
+        fill: '#1f2020',
+        stroke: '#81B1DB',
+        color: '#ffffff',
+    },
+    // Neutral theme
+    neutral: {
+        fill: '#ECECFF',
+        stroke: '#9370DB', 
+        color: '#333333',
+    }
+};
+
+/**
+ * Parse all node definitions from Mermaid flowchart/graph code
+ * Detects nodes with various shapes: [], (), {}, (()), [[]], etc.
+ * 
+ * @param {string} code - Mermaid code
+ * @returns {Map<string, {id: string, label: string, shape: string, lineNumber: number, hasInlineClass: boolean, inlineClass: string|null}>}
+ */
+export const parseAllNodes = (code) => {
+    const nodes = new Map();
+    if (!code) return nodes;
+
+    const lines = code.split('\n');
+    
+    // Skip lines that are comments, directives, classDef, class assignments, style, subgraph, end
+    const skipPatterns = [
+        /^\s*%%/,                           // Comments
+        /^\s*classDef\s+/,                  // classDef definitions
+        /^\s*class\s+[\w,]+\s+\w+/,         // class assignments
+        /^\s*style\s+\w+/,                  // style statements
+        /^\s*subgraph\s+/,                  // subgraph start
+        /^\s*end\s*$/,                      // subgraph end
+        /^\s*direction\s+/,                 // direction statements
+        /^\s*linkStyle\s+/,                 // linkStyle
+        /^\s*(graph|flowchart)\s+/,         // diagram type declaration
+    ];
+
+    // Node shape patterns - captures: nodeId, label content, optional :::class
+    // Shapes: [] () {} (()) [[]] [()] [{}] {{}} [/\] [\\/] ([ ]) 
+    const nodePatterns = [
+        // Standard shapes with potential :::class suffix
+        // [label] - rectangle
+        /\b(\w+)\s*\[([^\]]*)\](?:\s*:::(\w+))?/g,
+        // (label) - rounded/stadium
+        /\b(\w+)\s*\(([^)]*)\)(?:\s*:::(\w+))?/g,
+        // {label} - diamond/decision
+        /\b(\w+)\s*\{([^}]*)\}(?:\s*:::(\w+))?/g,
+        // ((label)) - circle
+        /\b(\w+)\s*\(\(([^)]*)\)\)(?:\s*:::(\w+))?/g,
+        // [[label]] - subroutine
+        /\b(\w+)\s*\[\[([^\]]*)\]\](?:\s*:::(\w+))?/g,
+        // [(label)] - cylinder/database  
+        /\b(\w+)\s*\[\(([^)]*)\)\](?:\s*:::(\w+))?/g,
+        // [{ label }] - not standard but handle
+        /\b(\w+)\s*\[\{([^}]*)\}\](?:\s*:::(\w+))?/g,
+        // {{label}} - hexagon
+        /\b(\w+)\s*\{\{([^}]*)\}\}(?:\s*:::(\w+))?/g,
+    ];
+
+    // Map shape delimiters to shape names
+    const getShapeFromMatch = (match) => {
+        const full = match[0];
+        if (full.includes('((')) return 'circle';
+        if (full.includes('[[')) return 'subroutine';
+        if (full.includes('[(')) return 'cylinder';
+        if (full.includes('[{')) return 'special';
+        if (full.includes('{{')) return 'hexagon';
+        if (full.includes('{')) return 'diamond';
+        if (full.includes('(')) return 'rounded';
+        if (full.includes('[')) return 'rectangle';
+        return 'unknown';
+    };
+
+    lines.forEach((line, index) => {
+        // Skip non-node lines
+        if (skipPatterns.some(pattern => pattern.test(line))) return;
+        
+        // Try each node pattern
+        for (const pattern of nodePatterns) {
+            pattern.lastIndex = 0; // Reset regex
+            let match;
+            
+            while ((match = pattern.exec(line)) !== null) {
+                const nodeId = match[1];
+                const label = match[2] || '';
+                const inlineClass = match[3] || null;
+                
+                // Skip if this is a reserved word or looks like a keyword
+                if (['graph', 'flowchart', 'subgraph', 'end', 'classDef', 'class', 'style', 'direction'].includes(nodeId)) {
+                    continue;
+                }
+                
+                // Only add if not already in map (first definition wins)
+                if (!nodes.has(nodeId)) {
+                    nodes.set(nodeId, {
+                        id: nodeId,
+                        label: label.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim(), // Clean HTML tags
+                        rawLabel: label,
+                        shape: getShapeFromMatch(match),
+                        lineNumber: index + 1,
+                        hasInlineClass: !!inlineClass,
+                        inlineClass: inlineClass,
+                    });
+                }
+            }
+        }
+    });
+
+    return nodes;
+};
+
+/**
+ * Get the effective style for a node considering:
+ * 1. Inline class (:::className)
+ * 2. Class assignment (class nodeId className;)
+ * 3. Inline style (style nodeId fill:...)
+ * 4. Default Mermaid theme colors
+ * 
+ * @param {string} nodeId - Node ID
+ * @param {string} code - Mermaid code
+ * @returns {{fill: string, color: string, stroke: string, source: string, className: string|null}}
+ */
+export const getNodeEffectiveStyle = (nodeId, code) => {
+    const nodes = parseAllNodes(code);
+    const classDefs = parseClassDefs(code);
+    const classAssignments = parseClassAssignments(code);
+    const inlineStyles = parseInlineStyles(code);
+    
+    const node = nodes.get(nodeId);
+    if (!node) {
+        return { ...MERMAID_DEFAULT_COLORS.default, source: 'not_found', className: null };
+    }
+    
+    // Priority 1: Inline style (style nodeId fill:...) - highest priority
+    if (inlineStyles.has(nodeId)) {
+        const style = inlineStyles.get(nodeId);
+        return {
+            fill: style.fill || MERMAID_DEFAULT_COLORS.default.fill,
+            color: style.color || MERMAID_DEFAULT_COLORS.default.color,
+            stroke: style.stroke || MERMAID_DEFAULT_COLORS.default.stroke,
+            source: 'inline_style',
+            className: null,
+        };
+    }
+    
+    // Priority 2: Check for class (inline :::class or class assignment)
+    let assignedClass = node.inlineClass;
+    
+    if (!assignedClass && classAssignments.has(nodeId)) {
+        const classes = classAssignments.get(nodeId);
+        if (classes.length > 0) {
+            assignedClass = classes[classes.length - 1]; // Last class wins
+        }
+    }
+    
+    // Priority 3: If class is assigned, use classDef colors
+    if (assignedClass && classDefs.has(assignedClass)) {
+        const classDef = classDefs.get(assignedClass);
+        return {
+            fill: classDef.fill || MERMAID_DEFAULT_COLORS.default.fill,
+            color: classDef.color || MERMAID_DEFAULT_COLORS.default.color,
+            stroke: classDef.stroke || MERMAID_DEFAULT_COLORS.default.stroke,
+            source: 'classDef',
+            className: assignedClass,
+        };
+    }
+    
+    // Priority 4: Check for 'default' classDef (Mermaid convention)
+    if (classDefs.has('default')) {
+        const defaultClass = classDefs.get('default');
+        return {
+            fill: defaultClass.fill || MERMAID_DEFAULT_COLORS.default.fill,
+            color: defaultClass.color || MERMAID_DEFAULT_COLORS.default.color,
+            stroke: defaultClass.stroke || MERMAID_DEFAULT_COLORS.default.stroke,
+            source: 'classDef_default',
+            className: 'default',
+        };
+    }
+    
+    // Priority 5: Mermaid default theme colors (no styling at all)
+    return {
+        ...MERMAID_DEFAULT_COLORS.default,
+        source: 'mermaid_default',
+        className: null,
+    };
+};
+
+/**
+ * Find all nodes that have no explicit styling and may have visibility issues
+ * 
+ * CRITICAL: Nodes without explicit styling are ALWAYS considered as needing a fix because:
+ * 1. Mermaid's CSS can "leak" styles from classDefs with high specificity
+ * 2. classDef styles like "color:#fff" can affect unstyled nodes unexpectedly  
+ * 3. The actual rendered colors depend on theme, CSS specificity, and runtime factors
+ * 4. We cannot reliably predict what colors Mermaid will use for unstyled nodes
+ * 
+ * The ONLY safe approach is to explicitly style all nodes to guarantee visibility.
+ * 
+ * @param {string} code - Mermaid code
+ * @returns {Array<{id: string, label: string, fill: string, color: string, contrast: object, needsFix: boolean, source: string}>}
+ */
+export const findUnstyledNodes = (code) => {
+    const nodes = parseAllNodes(code);
+    const classDefs = parseClassDefs(code);
+    const classAssignments = parseClassAssignments(code);
+    const inlineStyles = parseInlineStyles(code);
+    const subgraphIds = new Set(parseSubgraphs(code).keys());
+    
+    const unstyledNodes = [];
+    
+    // Check if there are any classDefs with potentially problematic colors (white text)
+    // This indicates high risk of CSS leakage affecting unstyled nodes
+    let hasWhiteTextClassDef = false;
+    classDefs.forEach((props) => {
+        const textColor = props.color?.toLowerCase();
+        if (textColor === '#fff' || textColor === '#ffffff' || textColor === 'white') {
+            hasWhiteTextClassDef = true;
+        }
+    });
+    
+    nodes.forEach((node, nodeId) => {
+        // Skip subgraphs (they're handled separately)
+        if (subgraphIds.has(nodeId)) return;
+        
+        // Check if node has any styling
+        const hasInlineStyle = inlineStyles.has(nodeId);
+        const hasInlineClass = node.hasInlineClass;
+        const hasClassAssignment = classAssignments.has(nodeId);
+        
+        // Get assigned class name
+        let assignedClass = node.inlineClass;
+        if (!assignedClass && hasClassAssignment) {
+            const classes = classAssignments.get(nodeId);
+            if (classes.length > 0) {
+                assignedClass = classes[classes.length - 1];
+            }
+        }
+        
+        // Check if assigned class exists in classDefs
+        const classDefExists = assignedClass ? classDefs.has(assignedClass) : false;
+        
+        // Node is "unstyled" if:
+        // 1. No inline style AND
+        // 2. (No class assigned OR assigned class doesn't exist in classDefs)
+        const isUnstyled = !hasInlineStyle && (!assignedClass || !classDefExists);
+        
+        if (isUnstyled) {
+            // Get effective style (will be Mermaid defaults or 'default' classDef)
+            const effectiveStyle = getNodeEffectiveStyle(nodeId, code);
+            const contrast = getContrastRatio(effectiveStyle.color, effectiveStyle.fill);
+            
+            // Calculate the optimal text color for guaranteed visibility
+            const suggestedColor = suggestTextColor(effectiveStyle.fill);
+            
+            // ALWAYS mark unstyled nodes as needing fix because:
+            // 1. Mermaid's CSS leakage is unpredictable
+            // 2. If there are classDefs with white text, risk is especially high
+            // 3. Better to be safe and ensure visibility
+            // 4. The "fix" uses smart algorithm to preserve appearance while ensuring visibility
+            const needsFix = true; // Always true for unstyled nodes
+            
+            unstyledNodes.push({
+                id: nodeId,
+                label: node.label,
+                rawLabel: node.rawLabel,
+                shape: node.shape,
+                lineNumber: node.lineNumber,
+                fill: effectiveStyle.fill,
+                color: effectiveStyle.color,
+                stroke: effectiveStyle.stroke,
+                contrast,
+                source: effectiveStyle.source,
+                suggestedColor,
+                needsFix,
+                hasWhiteTextRisk: hasWhiteTextClassDef,
+            });
+        }
+    });
+    
+    return unstyledNodes;
+};
+
+/**
+ * Create styling for an unstyled node using classDef + class assignment
+ * This approach works reliably because it uses the same mechanism as user-defined styles.
+ * 
+ * The strategy is:
+ * 1. Create a unique classDef for the node (e.g., `_fix_Juridica`)
+ * 2. Assign that class to the node
+ * 
+ * This guarantees the same CSS specificity as other classDefs, ensuring visibility.
+ * 
+ * @param {string} code - Original Mermaid code
+ * @param {string} nodeId - Node ID to style
+ * @param {Object} props - Properties {fill?, stroke?, color?}
+ * @returns {string} - Modified code
+ */
+export const createNodeStyle = (code, nodeId, props) => {
+    if (!code || !nodeId) return code;
+    
+    // Generate a unique class name for this node
+    const className = `_fix_${nodeId}`;
+    
+    // Check if we already created a fix class for this node
+    const classDefs = parseClassDefs(code);
+    if (classDefs.has(className)) {
+        // Update existing classDef
+        return updateClassDef(code, className, props);
+    }
+    
+    // Check if node already has a class assigned - if so, update that classDef instead
+    const classAssignments = parseClassAssignments(code);
+    if (classAssignments.has(nodeId)) {
+        const assignedClasses = classAssignments.get(nodeId);
+        if (assignedClasses.length > 0) {
+            const existingClass = assignedClasses[assignedClasses.length - 1];
+            if (classDefs.has(existingClass)) {
+                // Update the existing classDef
+                return updateClassDef(code, existingClass, props);
+            }
+        }
+    }
+    
+    // Build classDef properties string
+    const propsArray = [];
+    if (props.fill) propsArray.push(`fill:${props.fill}`);
+    if (props.stroke) propsArray.push(`stroke:${props.stroke}`);
+    if (props.color) propsArray.push(`color:${props.color}`);
+    
+    if (propsArray.length === 0) return code;
+    
+    const classDefStatement = `    classDef ${className} ${propsArray.join(',')};`;
+    const classAssignStatement = `    class ${nodeId} ${className};`;
+    
+    // Find the best place to insert: after existing classDef statements
+    const lines = code.split('\n');
+    let classDefInsertIndex = -1;
+    let classAssignInsertIndex = -1;
+    
+    // Find last classDef line and last class assignment line
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (line.startsWith('classDef ')) {
+            classDefInsertIndex = i + 1;
+        }
+        if (line.startsWith('class ')) {
+            classAssignInsertIndex = i + 1;
+        }
+    }
+    
+    // If no classDef found, insert before end (or at end if no structure)
+    if (classDefInsertIndex === -1) {
+        // Find a good place - after the last node/edge definition, before linkStyle
+        for (let i = lines.length - 1; i >= 0; i--) {
+            const line = lines[i].trim();
+            if (line.startsWith('linkStyle') || line.startsWith('style ')) {
+                classDefInsertIndex = i;
+                break;
+            }
+        }
+        if (classDefInsertIndex === -1) {
+            classDefInsertIndex = lines.length;
+        }
+    }
+    
+    // Insert classDef first
+    lines.splice(classDefInsertIndex, 0, classDefStatement);
+    
+    // Recalculate classAssignInsertIndex after insertion
+    if (classAssignInsertIndex === -1 || classAssignInsertIndex <= classDefInsertIndex) {
+        classAssignInsertIndex = classDefInsertIndex + 1;
+    } else {
+        classAssignInsertIndex += 1; // Account for the classDef we just inserted
+    }
+    
+    // Insert class assignment
+    lines.splice(classAssignInsertIndex, 0, classAssignStatement);
+    
+    return lines.join('\n');
+};
+
 /**
  * Parse the %%{init: ...}%% directive
  * @param {string} code 
@@ -1288,20 +1693,48 @@ export const analyzeAllStyles = (code) => {
         });
     }
 
+    // =========================================================================
+    // Analyze UNSTYLED NODES (nodes without class assignment or inline style)
+    // These use Mermaid default colors which may have visibility issues
+    // =========================================================================
+    const unstyledNodes = findUnstyledNodes(code);
+    
+    unstyledNodes.forEach((node) => {
+        results.push({
+            id: node.id,
+            type: 'unstyledNode',
+            fill: node.fill,
+            color: node.color,
+            stroke: node.stroke,
+            label: node.label,
+            rawLabel: node.rawLabel,
+            shape: node.shape,
+            contrast: node.contrast,
+            suggestedColor: node.suggestedColor,
+            needsFix: node.needsFix,
+            lineNumber: node.lineNumber,
+            source: node.source,
+            description: `Node "${node.id}" has no style (using ${node.source})`
+        });
+    });
+
     return results;
 };
 
 /**
- * Update any style (classDef, inline, subgraph, or edgeLabel) based on type
+ * Update any style (classDef, inline, subgraph, edgeLabel, or unstyledNode) based on type
  * @param {string} code
  * @param {string} id - className, nodeId, or subgraphId
- * @param {'classDef' | 'inline' | 'subgraph' | 'edgeLabel'} type
+ * @param {'classDef' | 'inline' | 'subgraph' | 'edgeLabel' | 'unstyledNode'} type
  * @param {Object} newProps
  * @returns {string}
  */
 export const updateStyle = (code, id, type, newProps) => {
     if (type === 'classDef') {
         return updateClassDef(code, id, newProps);
+    } else if (type === 'unstyledNode') {
+        // For unstyled nodes, create an inline style statement
+        return createNodeStyle(code, id, newProps);
     } else if (type === 'subgraph') {
         // Subgraph title colors in Mermaid are NOT controlled by `style SubgraphID color:...`
         // Instead, they are controlled by themeVariables (titleColor) and CSS
@@ -1470,6 +1903,55 @@ export const autoFixAllStyles = (code) => {
                     oldColor: issue.color,
                     newColor: '#000000',
                     improvement: { from: issue.contrast.ratio, to: 21 },
+                });
+                return; // Continue to next issue
+            }
+
+            // Special handling for unstyled nodes
+            // ALWAYS apply explicit styling to guarantee visibility
+            // This is critical because Mermaid's CSS specificity can cause unexpected color inheritance
+            if (issue.type === 'unstyledNode') {
+                // Try smart fix first to find optimal color adjustment
+                const smartFix = smartContrastFix(issue.fill, issue.color);
+                
+                // Determine the best text color:
+                // 1. If smartFix found an improvement, use it
+                // 2. Otherwise, use the suggested color (black or white based on fill)
+                // 3. We ALWAYS apply a style to ensure visibility
+                let finalTextColor;
+                let strategy;
+                
+                if (smartFix.strategy !== 'none' && smartFix.improvement.to > issue.contrast.ratio) {
+                    // Smart fix found a better color
+                    finalTextColor = smartFix.strategy === 'text' ? smartFix.newColor : issue.suggestedColor;
+                    strategy = smartFix.strategy;
+                } else {
+                    // Use suggested color (optimal black/white based on fill luminance)
+                    finalTextColor = issue.suggestedColor;
+                    strategy = 'force_visibility';
+                }
+                
+                // Create complete inline style to override any CSS leakage
+                // Use Mermaid's default fill color but with guaranteed visible text
+                const styleProps = {
+                    fill: issue.fill,
+                    stroke: issue.stroke || MERMAID_DEFAULT_COLORS.default.stroke,
+                    color: finalTextColor,
+                };
+                
+                newCode = updateStyle(newCode, issue.id, issue.type, styleProps);
+                
+                // Calculate new contrast for reporting
+                const newContrast = getContrastRatio(finalTextColor, issue.fill);
+                
+                fixes.push({
+                    id: issue.id,
+                    type: issue.type,
+                    strategy: strategy,
+                    reason: `Styled unstyled node "${issue.id}" for visibility (was using ${issue.source})`,
+                    oldColor: issue.color,
+                    newColor: finalTextColor,
+                    improvement: { from: issue.contrast.ratio, to: newContrast.ratio },
                 });
                 return; // Continue to next issue
             }

@@ -90,6 +90,23 @@ export function StyleEditorDrawer({ isOpen, onClose, code, onCodeChange }) {
             return;
         }
 
+        // Special handling for unstyled nodes
+        // Creates a dedicated classDef and assigns it to the node
+        if (styleItem.type === 'unstyledNode') {
+            const suggestedColor = styleItem.suggestedColor || '#000000';
+            
+            // Create classDef with proper colors for this node
+            const updatedCode = updateStyle(code, styleItem.id, 'unstyledNode', {
+                fill: styleItem.fill,
+                stroke: styleItem.stroke,
+                color: suggestedColor
+            });
+            
+            // Apply changes directly since this creates classDef + class assignment
+            onCodeChange(updatedCode);
+            return;
+        }
+
         // Use intelligent smart fix for classDef and inline styles
         const smartFix = smartContrastFix(styleItem.fill, styleItem.color);
 
@@ -492,6 +509,11 @@ export function StyleEditorDrawer({ isOpen, onClose, code, onCodeChange }) {
             return renderSubgraphCard(styleItem, key, fill, color);
         }
 
+        // Special handling for unstyled nodes
+        if (styleItem.type === 'unstyledNode') {
+            return renderUnstyledNodeCard(styleItem, key, fill, color);
+        }
+
         const { ratio, level } = getContrastRatio(color, fill);
         const indicator = getContrastIndicator(level, ratio);
 
@@ -888,6 +910,172 @@ export function StyleEditorDrawer({ isOpen, onClose, code, onCodeChange }) {
                     <div style={{ marginTop: '8px', opacity: 0.5, fontSize: '11px' }}>
                         (subgraph content)
                     </div>
+                </div>
+
+                {/* Contrast Meter */}
+                <div style={styles.contrastMeter}>
+                    <div style={styles.contrastLabel}>
+                        <span>{t('styleEditor.contrast')}</span>
+                        <span style={{ ...styles.contrastValue, color: indicator.color }}>
+                            {ratio}:1 {indicator.icon} {indicator.text}
+                        </span>
+                    </div>
+                    <div style={styles.meterTrack}>
+                        <div
+                            style={{
+                                ...styles.meterFill,
+                                width: `${getMeterWidth(ratio)}%`,
+                                background: level === 'FAIL'
+                                    ? 'linear-gradient(90deg, #ef4444 0%, #f87171 100%)'
+                                    : level === 'AA'
+                                        ? 'linear-gradient(90deg, #fbbf24 0%, #fcd34d 100%)'
+                                        : 'linear-gradient(90deg, #22c55e 0%, #4ade80 100%)',
+                            }}
+                        />
+                    </div>
+                    <div style={styles.meterMarkers}>
+                        <span>1</span>
+                        <span style={{ position: 'absolute', left: '21%' }}>4.5</span>
+                        <span style={{ position: 'absolute', left: '33%' }}>7</span>
+                        <span>21+</span>
+                    </div>
+                </div>
+
+                {/* Color Editors */}
+                <div style={styles.colorSection}>
+                    <ColorField
+                        label={t('styleEditor.fill')}
+                        value={fill}
+                        onChange={(newFill) => setPendingChanges(prev => ({
+                            ...prev,
+                            [key]: { ...prev[key], fill: newFill, _type: styleItem.type, _id: styleItem.id }
+                        }))}
+                        palette={COLOR_PALETTES.lightFills.concat(COLOR_PALETTES.darkFills)}
+                        colors={colors}
+                        theme={theme}
+                    />
+                    <ColorField
+                        label={t('styleEditor.textColor')}
+                        value={color}
+                        onChange={(newColor) => setPendingChanges(prev => ({
+                            ...prev,
+                            [key]: { ...prev[key], color: newColor, _type: styleItem.type, _id: styleItem.id }
+                        }))}
+                        palette={COLOR_PALETTES.textColors}
+                        colors={colors}
+                        theme={theme}
+                    />
+                </div>
+            </div>
+        );
+    };
+
+    // Special card renderer for Unstyled Nodes
+    const renderUnstyledNodeCard = (styleItem, key, fill, color) => {
+        const { ratio, level } = getContrastRatio(color, fill);
+        const indicator = getContrastIndicator(level, ratio);
+
+        return (
+            <div key={key} style={{ 
+                ...styles.classCard, 
+                borderLeft: `4px solid #f59e0b`,
+                background: theme === 'dark' 
+                    ? 'linear-gradient(135deg, rgba(245, 158, 11, 0.05) 0%, transparent 100%)'
+                    : 'linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, transparent 100%)'
+            }}>
+                <div style={styles.classHeader}>
+                    <div style={styles.className}>
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: '24px',
+                            height: '24px',
+                            background: 'linear-gradient(135deg, #fcd34d 0%, #f59e0b 100%)',
+                            borderRadius: '6px',
+                            color: '#78350f'
+                        }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <circle cx="12" cy="12" r="10" />
+                                <path d="M12 16v-4M12 8h.01" />
+                            </svg>
+                        </div>
+                        <span>{styleItem.id}</span>
+                        <span style={{
+                            fontSize: '9px',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            background: 'rgba(245, 158, 11, 0.15)',
+                            color: '#f59e0b',
+                            fontWeight: '600',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.05em',
+                        }}>unstyled</span>
+                    </div>
+
+                    <button
+                        style={{
+                            ...styles.fixButton,
+                            background: 'rgba(245, 158, 11, 0.15)',
+                            border: '1px solid rgba(245, 158, 11, 0.3)',
+                            color: '#f59e0b'
+                        }}
+                        onClick={() => handleFixStyle(styleItem)}
+                    >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M12 5v14M5 12h14" />
+                        </svg>
+                        {t('styleEditor.autoFix')}
+                    </button>
+                </div>
+
+                {/* Info banner explaining what will happen */}
+                <div style={{
+                    fontSize: '11px',
+                    color: '#d97706',
+                    marginBottom: '12px',
+                    padding: '10px 12px',
+                    background: theme === 'dark' 
+                        ? 'rgba(245, 158, 11, 0.1)' 
+                        : 'rgba(245, 158, 11, 0.08)',
+                    borderRadius: '8px',
+                    border: '1px solid rgba(245, 158, 11, 0.2)',
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '8px',
+                    lineHeight: '1.4'
+                }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, marginTop: '1px' }}>
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                    </svg>
+                    <span>
+                        {t('styleEditor.unstyledNodeInfo') || 'This node has no style. Fixing will create a dedicated class to ensure visibility.'}
+                    </span>
+                </div>
+
+                {/* Current state info */}
+                <div style={{
+                    fontSize: '11px',
+                    color: colors.textMuted,
+                    marginBottom: '12px',
+                    padding: '8px 12px',
+                    background: colors.bgHover,
+                    borderRadius: '6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                }}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                        <line x1="3" y1="9" x2="21" y2="9" />
+                        <line x1="9" y1="21" x2="9" y2="9" />
+                    </svg>
+                    {styleItem.label ? `"${styleItem.label.substring(0, 35)}${styleItem.label.length > 35 ? '...' : ''}"` : `Node ${styleItem.id}`}
+                </div>
+
+                {/* Preview Box */}
+                <div style={{ ...styles.previewBox, background: fill, color: color }}>
+                    {t('styleEditor.sampleText')}
                 </div>
 
                 {/* Contrast Meter */}

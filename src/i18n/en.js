@@ -65,6 +65,7 @@ export const en = {
         fixEdgeLabels: 'Fix Labels',
         textColor: 'Text',
         fixedViaCSS: 'Fixed via CSS injection',
+        unstyledNodeInfo: 'This node has no style. Fixing will create a dedicated class to ensure visibility.',
     },
     examples: {
         flowchart: `flowchart LR

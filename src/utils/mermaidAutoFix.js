@@ -419,6 +419,71 @@ const fixSubgraphTitle = (line) => {
 };
 
 // =============================================================================
+// FIX PARA 'END' HUÉRFANOS (SIN SUBGRAPH CORRESPONDIENTE)
+// =============================================================================
+
+/**
+ * Detecta y corrige 'end' huérfanos (sin subgraph correspondiente)
+ * 
+ * Problema: Los usuarios a veces escriben 'end' pensando que cierra 
+ * un bloque visual, pero en Mermaid 'end' solo debe cerrar un 'subgraph'.
+ * Un 'end' sin subgraph previo causa: "Expecting ... got 'end'"
+ * 
+ * Estrategia: Usamos un contador de stack para rastrear subgraphs abiertos.
+ * Cuando encontramos un 'end' y el stack está en 0, es huérfano.
+ * 
+ * Principio "First, do no harm": Comentamos la línea en lugar de eliminarla,
+ * preservando el código original del usuario.
+ * 
+ * @param {string[]} lines - Array de líneas del código
+ * @returns {{lines: string[], fixes: Array<{line: number, type: string, original: string, fixed: string}>}}
+ */
+const fixOrphanEnds = (lines) => {
+    const fixes = [];
+    let subgraphStack = 0; // Contador de subgraphs abiertos
+    
+    const result = lines.map((line, index) => {
+        const trimmed = line.trim().toLowerCase();
+        
+        // Ignorar líneas vacías y comentarios
+        if (!trimmed || trimmed.startsWith('%%')) {
+            return line;
+        }
+        
+        // Contar apertura de subgraph
+        // Soporta: "subgraph ID", "subgraph ID[title]", "subgraph ID [title]"
+        if (/^subgraph\s/.test(trimmed) || trimmed === 'subgraph') {
+            subgraphStack++;
+            return line;
+        }
+        
+        // Detectar 'end' (solo la palabra, con posibles espacios)
+        if (/^end\s*$/.test(trimmed)) {
+            if (subgraphStack > 0) {
+                // end válido - cierra un subgraph abierto
+                subgraphStack--;
+                return line;
+            } else {
+                // end huérfano - no hay subgraph que cerrar
+                const indentation = line.match(/^(\s*)/)[1] || '';
+                fixes.push({
+                    line: index + 1,
+                    type: 'orphan_end',
+                    original: line.trim(),
+                    fixed: `${indentation}%% ${line.trim()} %% Auto-fix: 'end' sin subgraph correspondiente`
+                });
+                // Comentar la línea en lugar de eliminarla
+                return `${indentation}%% ${line.trim()} %% Auto-fix: 'end' sin subgraph correspondiente`;
+            }
+        }
+        
+        return line;
+    });
+    
+    return { lines: result, fixes };
+};
+
+// =============================================================================
 // FIX PARA SINTAXIS INVÁLIDA DESPUÉS DE NODOS
 // =============================================================================
 
@@ -1343,7 +1408,17 @@ export const autoFixMermaidCode = (code) => {
     const styleSupport = DIAGRAM_STYLE_SUPPORT[diagramType] || DIAGRAM_STYLE_SUPPORT.unknown;
 
     const lines = code.split('\n');
-    const fixedLines = lines.map((line, index) => {
+
+    // =========================================================================
+    // FIX ESTRUCTURAL: Detectar y corregir 'end' huérfanos ANTES de otros fixes
+    // Esto debe ejecutarse primero porque un 'end' huérfano causa errores de
+    // parsing que impiden que otros fixes se detecten correctamente.
+    // =========================================================================
+    const orphanEndResult = fixOrphanEnds(lines);
+    const preprocessedLines = orphanEndResult.lines;
+    orphanEndResult.fixes.forEach(fix => allFixes.push(fix));
+
+    const fixedLines = preprocessedLines.map((line, index) => {
         // =================================================================
         // MANEJO ESPECIAL DE DIRECTIVAS DE ESTILO POR TIPO DE DIAGRAMA
         // =================================================================
@@ -1553,6 +1628,39 @@ export const analyzeCode = (code) => {
     // Detectar tipo de diagrama para verificar soporte de estilos
     const diagramType = getDiagramType(code);
     const styleSupport = DIAGRAM_STYLE_SUPPORT[diagramType] || DIAGRAM_STYLE_SUPPORT.unknown;
+
+    // =========================================================================
+    // DETECCIÓN DE 'END' HUÉRFANOS (sin subgraph correspondiente)
+    // Usamos un contador de stack para rastrear subgraphs abiertos.
+    // =========================================================================
+    let subgraphStack = 0;
+    lines.forEach((line, index) => {
+        const trimmed = line.trim().toLowerCase();
+        
+        // Ignorar comentarios (incluidos los auto-fix previos)
+        if (trimmed.startsWith('%%')) return;
+        
+        // Contar apertura de subgraph
+        if (/^subgraph\s/.test(trimmed) || trimmed === 'subgraph') {
+            subgraphStack++;
+            return;
+        }
+        
+        // Detectar 'end'
+        if (/^end\s*$/.test(trimmed)) {
+            if (subgraphStack > 0) {
+                subgraphStack--;
+            } else {
+                // end huérfano detectado
+                issues.push({
+                    line: index + 1,
+                    type: 'orphan_end',
+                    content: line.trim(),
+                    description: "'end' sin subgraph correspondiente - será comentado automáticamente"
+                });
+            }
+        }
+    });
 
     lines.forEach((line, index) => {
         // =================================================================

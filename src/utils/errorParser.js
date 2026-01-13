@@ -132,6 +132,21 @@ export const ERROR_PATTERNS = [
         canAutoFix: false
     },
     {
+        // Detecta 'end' huérfanos: más 'end' que 'subgraph'
+        // Error típico: "Expecting 'SEMI', 'NEWLINE'... got 'end'"
+        pattern: /got 'end'|Expecting.*got 'end'/i,
+        detect: (code) => {
+            // Contar subgraphs y ends de forma precisa (solo líneas completas)
+            const opens = (code.match(/^\s*subgraph\s/gim) || []).length;
+            const closes = (code.match(/^\s*end\s*$/gim) || []).length;
+            return closes > opens;
+        },
+        title: "'end' sin subgraph correspondiente",
+        explanation: "Hay más palabras 'end' que declaraciones 'subgraph'. En Mermaid, 'end' es una palabra reservada que solo debe usarse para cerrar un 'subgraph' previamente abierto.",
+        suggestion: 'Haz clic en "Auto-Fix" para comentar automáticamente los \'end\' huérfanos.',
+        canAutoFix: true
+    },
+    {
         // Este patrón NO se dispara por un error, sino por análisis proactivo
         // Se usa para detectar el problema silencioso de estilos en mindmaps
         pattern: /mindmap/i,

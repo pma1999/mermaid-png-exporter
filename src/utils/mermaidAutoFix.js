@@ -1,5 +1,5 @@
 /**
- * Sistema de Auto-corrección de código Mermaid v2.6
+ * Sistema de Auto-corrección de código Mermaid v2.7
  * 
  * PRINCIPIO FUNDAMENTAL: "First, do no harm"
  * - Solo modificar nodos que CLARAMENTE tienen problemas
@@ -17,6 +17,9 @@
  * v2.5 - Fix para directivas 'style' en mindmaps (no soportadas, se renderizan como texto)
  * v2.6 - Fix para edge labels con delimitadores incorrectos: -->|texto] → -->|texto|
  *        Detecta y corrige cuando se usa ], }, ) en lugar de | para cerrar edge labels
+ * v2.7 - Fix para clases CSS mal ubicadas dentro del contenido del nodo:
+ *        [":::className texto"] → ["texto"]:::className
+ *        Detecta :::clase al inicio del contenido y la mueve fuera del nodo
  */
 
 // =============================================================================
@@ -279,6 +282,93 @@ const safeQuote = (content) => {
     }
 
     return `"${cleanContent}"`;
+};
+
+/**
+ * Detecta y extrae clases CSS mal ubicadas dentro del contenido de un nodo.
+ * 
+ * Problema: El usuario escribe :::className DENTRO del texto del nodo:
+ *   LAW1[":::res1 🛑 NORMAS DE ABSTENCIÓN"]
+ * 
+ * Correcto: :::className debe estar FUERA del nodo:
+ *   LAW1["🛑 NORMAS DE ABSTENCIÓN"]:::res1
+ * 
+ * Esta función detecta el patrón y devuelve el contenido limpio + las clases extraídas.
+ * 
+ * Patrones detectados:
+ *   - ":::className texto" (con comillas)
+ *   - :::className texto (sin comillas)
+ *   - ":::class1 :::class2 texto" (múltiples clases)
+ * 
+ * @param {string} content - Contenido del nodo (puede incluir comillas externas)
+ * @returns {{cleanContent: string, extractedClasses: string, wasFixed: boolean}}
+ */
+const fixMisplacedClassInNodeContent = (content) => {
+    if (!content || content.trim() === '') {
+        return { cleanContent: content, extractedClasses: '', wasFixed: false };
+    }
+
+    let workingContent = content.trim();
+    let hadQuotes = false;
+
+    // Si el contenido está entrecomillado, quitar las comillas temporalmente
+    if ((workingContent.startsWith('"') && workingContent.endsWith('"')) ||
+        (workingContent.startsWith("'") && workingContent.endsWith("'"))) {
+        workingContent = workingContent.slice(1, -1);
+        hadQuotes = true;
+    }
+
+    // Usar enfoque de bucle para extraer clases una por una
+    // Esto es más robusto que un regex complejo con grupos no-capturadores
+    const singleClassPattern = /^:::([\w-]+)\s*/;
+    const extractedClassList = [];
+    let remaining = workingContent;
+
+    // Extraer clases del inicio una por una
+    let match;
+    while ((match = remaining.match(singleClassPattern)) !== null) {
+        extractedClassList.push(':::' + match[1]);
+        remaining = remaining.slice(match[0].length);
+    }
+
+    // Si no se encontraron clases, no hay nada que corregir
+    if (extractedClassList.length === 0) {
+        return { cleanContent: content, extractedClasses: '', wasFixed: false };
+    }
+
+    // Limpiar el contenido restante
+    let remainingContent = remaining.trim();
+
+    // Si no queda contenido después de las clases, no es un caso válido
+    // (sería solo ":::className" sin texto, lo cual es raro pero posible intención del usuario)
+    if (!remainingContent) {
+        return { cleanContent: content, extractedClasses: '', wasFixed: false };
+    }
+
+    // Unir todas las clases sin espacios: :::res1:::res2
+    const extractedClasses = extractedClassList.join('');
+
+    // Determinar si el contenido restante necesita comillas
+    // Necesita comillas si:
+    // 1. Tenía comillas originalmente
+    // 2. Tiene caracteres problemáticos (paréntesis, etc.)
+    let cleanContent;
+    if (hadQuotes || hasProblematicContent(remainingContent)) {
+        // Escapar comillas internas si las hay
+        const quoteAnalysis = analyzeQuotes(remainingContent);
+        if (quoteAnalysis.double > 0) {
+            remainingContent = remainingContent.replace(/"/g, '&quot;');
+        }
+        cleanContent = `"${remainingContent}"`;
+    } else {
+        cleanContent = remainingContent;
+    }
+
+    return {
+        cleanContent,
+        extractedClasses,
+        wasFixed: true
+    };
 };
 
 /**
@@ -965,6 +1055,27 @@ const parseAndFixNodes = (line) => {
             if (alreadyProcessed) continue;
 
             // =================================================================
+            // FIX: Clases CSS mal ubicadas DENTRO del contenido de formas especiales
+            // Ejemplo: ((":::res1 texto")) → (("texto")):::res1
+            // =================================================================
+            const misplacedClassResultSpecial = fixMisplacedClassInNodeContent(content);
+            if (misplacedClassResultSpecial.wasFixed) {
+                const existingModSpecial = modifier ? modifier.trim() : '';
+                const combinedClassesSpecial = misplacedClassResultSpecial.extractedClasses + existingModSpecial;
+                const fixedSpecial = `${nodeId}${openDelim}${misplacedClassResultSpecial.cleanContent}${closeDelim}${combinedClassesSpecial}`;
+
+                if (fixedSpecial !== fullMatch) {
+                    fixes.push({
+                        original: fullMatch,
+                        fixed: fixedSpecial,
+                        start: start,
+                        end: end
+                    });
+                    continue; // Ya procesado
+                }
+            }
+
+            // =================================================================
             // CHECK FOR LEAKED CONTENT (content outside brackets)
             // =================================================================
             const leak = detectLeakedContent(line, end);
@@ -1109,6 +1220,29 @@ const parseAndFixNodes = (line) => {
         if (alreadyProcessed) continue;
 
         // =================================================================
+        // FIX: Clases CSS mal ubicadas DENTRO del contenido del nodo []
+        // Ejemplo: [":::res1 texto"] → ["texto"]:::res1
+        // DEBE ejecutarse ANTES de otros checks para detectar el patrón
+        // =================================================================
+        const misplacedClassResult = fixMisplacedClassInNodeContent(content);
+        if (misplacedClassResult.wasFixed) {
+            // Combinar clases extraídas con clases existentes fuera del nodo
+            const existingMod = modifierWithSpace ? modifierWithSpace.trim() : '';
+            const combinedClasses = misplacedClassResult.extractedClasses + existingMod;
+            const fixed = `${nodeId}[${misplacedClassResult.cleanContent}]${combinedClasses}`;
+
+            if (fixed !== fullMatch) {
+                fixes.push({
+                    original: fullMatch,
+                    fixed: fixed,
+                    start: start,
+                    end: end
+                });
+                continue; // Ya procesado, pasar al siguiente nodo
+            }
+        }
+
+        // =================================================================
         // CHECK FOR LEAKED CONTENT (content outside brackets)
         // =================================================================
         const leak = detectLeakedContent(line, end);
@@ -1190,6 +1324,27 @@ const parseAndFixNodes = (line) => {
             (end > f.start && end <= f.end)
         );
         if (alreadyProcessed) continue;
+
+        // =================================================================
+        // FIX: Clases CSS mal ubicadas DENTRO del contenido del nodo {}
+        // Ejemplo: {:::res1 texto} → {"texto"}:::res1
+        // =================================================================
+        const misplacedClassResultBrace = fixMisplacedClassInNodeContent(content);
+        if (misplacedClassResultBrace.wasFixed) {
+            const existingModBrace = modifier ? modifier.trim() : '';
+            const combinedClassesBrace = misplacedClassResultBrace.extractedClasses + existingModBrace;
+            const fixedBrace = `${nodeId}{${misplacedClassResultBrace.cleanContent}}${combinedClassesBrace}`;
+
+            if (fixedBrace !== fullMatch) {
+                fixes.push({
+                    original: fullMatch,
+                    fixed: fixedBrace,
+                    start: start,
+                    end: end
+                });
+                continue;
+            }
+        }
 
         // =================================================================
         // CHECK FOR LEAKED CONTENT (content outside brackets)
@@ -1315,6 +1470,27 @@ const parseAndFixNodes = (line) => {
             // Calcular el string completo original
             const totalEnd = closeParenIndex + 1 + (modMatch ? modMatch[0].length : 0);
             const finalFullMatch = line.substring(startMatch.index, totalEnd);
+
+            // =================================================================
+            // FIX: Clases CSS mal ubicadas DENTRO del contenido del nodo ()
+            // Ejemplo: (:::res1 texto) → ("texto"):::res1
+            // =================================================================
+            const misplacedClassResultParen = fixMisplacedClassInNodeContent(content);
+            if (misplacedClassResultParen.wasFixed) {
+                const existingModParen = modifier ? modifier.trim() : '';
+                const combinedClassesParen = misplacedClassResultParen.extractedClasses + existingModParen;
+                const fixedParen = `${nodeId}(${misplacedClassResultParen.cleanContent})${combinedClassesParen}`;
+
+                if (fixedParen !== finalFullMatch) {
+                    fixes.push({
+                        original: finalFullMatch,
+                        fixed: fixedParen,
+                        start: startMatch.index,
+                        end: totalEnd
+                    });
+                    continue;
+                }
+            }
 
             // =================================================================
             // CHECK FOR LEAKED CONTENT (content outside brackets)

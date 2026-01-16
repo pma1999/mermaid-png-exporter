@@ -108,6 +108,31 @@ export default function App() {
   const [bgTransparent, setBgTransparent] = useState(false);
   const [activePanel, setActivePanel] = useState('preview'); // Default to preview on mobile
 
+  // Ref para rastrear el último código auto-corregido (previene bucles infinitos)
+  const lastAutoFixedCodeRef = useRef('');
+
+  // ==========================================================================
+  // AUTO-FIX PREVENTIVO TRANSPARENTE
+  // Aplica correcciones automáticamente ANTES del renderizado para problemas
+  // que renderizan incorrectamente sin causar error (ej: [":::res1 texto"])
+  // ==========================================================================
+  useEffect(() => {
+    // Evitar bucle infinito: no re-procesar código que acabamos de corregir
+    if (code === lastAutoFixedCodeRef.current) {
+      return;
+    }
+
+    // Ejecutar auto-fix
+    const result = autoFixMermaidCode(code);
+
+    if (result.hasChanges) {
+      // Guardar el código corregido para evitar re-procesarlo
+      lastAutoFixedCodeRef.current = result.code;
+      // Aplicar la corrección automáticamente
+      setCode(result.code);
+    }
+  }, [code]);
+
   // Hooks
   const { theme, colors } = useTheme();
   const { isMobile, isTablet } = useMediaQuery();

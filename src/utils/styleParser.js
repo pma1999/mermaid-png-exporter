@@ -472,6 +472,167 @@ export const parseClassDefs = (code) => {
 };
 
 /**
+ * Determine the CSS cascade priority for a classDef based on fill luminance
+ * 
+ * CRITICAL: This solves the Mermaid CSS specificity issue where all classDef rules
+ * have equal specificity (#id .class span = 111). When specificity is equal,
+ * declaration ORDER determines the winner (last one wins).
+ * 
+ * The problem: Mermaid's `<g class="root">` wraps ALL elements. So a user's
+ * `classDef root fill:#333,color:#fff` generates `.root span { color: #fff }`
+ * which affects ALL spans. If other classDefs are defined BEFORE `root`, they lose.
+ * 
+ * Solution: Reorder classDefs so dark fills (white text) come FIRST, and
+ * light fills (black text) come LAST. This ensures light-fill classes always win.
+ * 
+ * @param {Object} classDefProps - The parsed classDef properties {fill?, color?, ...}
+ * @returns {number} Priority: 0 = dark fill (should come first), 1 = light fill (should come last)
+ */
+export const getClassDefPriority = (classDefProps) => {
+    if (!classDefProps) return 1; // Default to light (should come last for safety)
+    
+    // Check explicit color first - this is the most reliable indicator
+    const explicitColor = classDefProps.color?.toLowerCase();
+    if (explicitColor) {
+        // White text = dark fill = priority 0 (first)
+        if (explicitColor === '#fff' || 
+            explicitColor === '#ffffff' || 
+            explicitColor === 'white' ||
+            explicitColor.match(/^#f{3,6}$/i)) {
+            return 0; // Dark fill, should come first
+        }
+        // Black/dark text = light fill = priority 1 (last)
+        if (explicitColor === '#000' || 
+            explicitColor === '#000000' || 
+            explicitColor === 'black' ||
+            explicitColor.match(/^#0{3,6}$/i)) {
+            return 1; // Light fill, should come last
+        }
+    }
+    
+    // Analyze fill luminance if no explicit color
+    const fill = classDefProps.fill || '#ECECFF'; // Mermaid default
+    const fillRGB = parseColor(fill);
+    
+    if (!fillRGB) return 1; // Can't parse, assume light (safer)
+    
+    const luminance = getRelativeLuminance(fillRGB);
+    
+    // Dark fills (luminance < 0.4) need white text = priority 0 (first)
+    // Light fills (luminance >= 0.4) need black text = priority 1 (last)
+    // Using 0.4 as threshold to be more conservative (catches more "dark" colors)
+    return luminance < 0.4 ? 0 : 1;
+};
+
+/**
+ * Reorder classDef statements in Mermaid code to fix CSS cascade issues
+ * 
+ * This function solves the critical issue where classDefs with dark fills
+ * (like `classDef root fill:#333,color:#fff`) can override other classDefs
+ * due to CSS cascade order.
+ * 
+ * Strategy:
+ * 1. Dark fills (white text) -> placed FIRST (will be overridden by later rules)
+ * 2. Light fills (black text) -> placed LAST (will win in CSS cascade)
+ * 
+ * @param {string} code - Mermaid code
+ * @returns {string} - Code with reordered classDef statements
+ */
+export const reorderClassDefsForCSS = (code) => {
+    if (!code) return code;
+    
+    const lines = code.split('\n');
+    const classDefRegex = /^\s*classDef\s+(\w+)\s+(.+?)\s*;?\s*$/;
+    
+    // Collect all classDef lines with their info
+    const classDefEntries = [];
+    const classDefLineIndices = new Set();
+    
+    lines.forEach((line, index) => {
+        const match = line.match(classDefRegex);
+        if (!match) return;
+        
+        const [fullMatch, className, propsString] = match;
+        
+        // Parse properties to determine priority
+        const props = {};
+        propsString.split(',').forEach((pair) => {
+            const colonIndex = pair.indexOf(':');
+            if (colonIndex === -1) return;
+            const key = pair.slice(0, colonIndex).trim().toLowerCase();
+            const value = pair.slice(colonIndex + 1).trim();
+            if (key === 'fill') props.fill = value;
+            else if (key === 'color') props.color = value;
+        });
+        
+        const priority = getClassDefPriority(props);
+        
+        classDefEntries.push({
+            className,
+            originalLine: line,
+            lineIndex: index,
+            priority,
+            props
+        });
+        
+        classDefLineIndices.add(index);
+    });
+    
+    // If no classDefs or only one, no reordering needed
+    if (classDefEntries.length <= 1) return code;
+    
+    // Sort by priority: 0 (dark fills) first, 1 (light fills) last
+    // Within same priority, maintain original order (stable sort)
+    classDefEntries.sort((a, b) => {
+        if (a.priority !== b.priority) {
+            return a.priority - b.priority;
+        }
+        // Maintain original order within same priority
+        return a.lineIndex - b.lineIndex;
+    });
+    
+    // Check if reordering is actually needed
+    let needsReorder = false;
+    for (let i = 0; i < classDefEntries.length; i++) {
+        // Find original position among classDef lines only
+        const originalPositionAmongClassDefs = [...classDefLineIndices]
+            .sort((a, b) => a - b)
+            .indexOf(classDefEntries[i].lineIndex);
+        if (originalPositionAmongClassDefs !== i) {
+            needsReorder = true;
+            break;
+        }
+    }
+    
+    if (!needsReorder) return code;
+    
+    // Find the position of the first classDef line (we'll insert reordered defs there)
+    const firstClassDefIndex = Math.min(...classDefLineIndices);
+    
+    // Build new lines array
+    const newLines = [];
+    let classDefsInserted = false;
+    
+    for (let i = 0; i < lines.length; i++) {
+        if (classDefLineIndices.has(i)) {
+            // Skip original classDef line, we'll insert all reordered ones at first position
+            if (!classDefsInserted) {
+                // Insert all reordered classDefs at the position of the first one
+                classDefEntries.forEach(entry => {
+                    newLines.push(entry.originalLine);
+                });
+                classDefsInserted = true;
+            }
+            // Skip this line (it's been moved)
+        } else {
+            newLines.push(lines[i]);
+        }
+    }
+    
+    return newLines.join('\n');
+};
+
+/**
  * Parse class assignments (class NODE1,NODE2 className;)
  * @param {string} code
  * @returns {Map<string, string[]>} Map of nodeId -> array of classNames
@@ -1979,6 +2140,12 @@ export const autoFixAllStyles = (code) => {
             });
         }
     });
+
+    // CRITICAL: Reorder classDefs to fix CSS cascade issues
+    // Dark fills (white text) should come FIRST, light fills (black text) LAST
+    // This ensures that classDefs with light fills always win the CSS cascade
+    // over problematic classes like "root" that set color:#fff globally
+    newCode = reorderClassDefsForCSS(newCode);
 
     return { code: newCode, fixes };
 };

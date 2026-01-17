@@ -222,12 +222,6 @@ const hasProblematicQuotes = (content) => {
         return true;
     }
 
-    // Si tiene comillas simples internas, también es problemático
-    // Mermaid interpreta ' como delimitador de string literal (token STR)
-    if (quoteAnalysis.single > 0) {
-        return true;
-    }
-
     return false;
 };
 
@@ -285,11 +279,6 @@ const safeQuote = (content) => {
     let cleanContent = content;
     if (quoteAnalysis.double > 0) {
         cleanContent = cleanContent.replace(/"/g, '&quot;');
-    }
-
-    // Si tiene comillas simples internas, escaparlas con entidad HTML
-    if (quoteAnalysis.single > 0) {
-        cleanContent = cleanContent.replace(/'/g, '&#39;');
     }
 
     return `"${cleanContent}"`;

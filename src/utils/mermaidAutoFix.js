@@ -222,6 +222,12 @@ const hasProblematicQuotes = (content) => {
         return true;
     }
 
+    // Si tiene comillas simples internas, también es problemático
+    // Mermaid interpreta ' como delimitador de string literal (token STR)
+    if (quoteAnalysis.single > 0) {
+        return true;
+    }
+
     return false;
 };
 
@@ -278,7 +284,12 @@ const safeQuote = (content) => {
     // Si tiene comillas dobles internas, escaparlas con entidad HTML
     let cleanContent = content;
     if (quoteAnalysis.double > 0) {
-        cleanContent = content.replace(/"/g, '&quot;');
+        cleanContent = cleanContent.replace(/"/g, '&quot;');
+    }
+
+    // Si tiene comillas simples internas, escaparlas con entidad HTML
+    if (quoteAnalysis.single > 0) {
+        cleanContent = cleanContent.replace(/'/g, '&#39;');
     }
 
     return `"${cleanContent}"`;
@@ -1054,6 +1065,20 @@ const parseAndFixNodes = (line) => {
             );
             if (alreadyProcessed) continue;
 
+            // =====================================================================
+            // Validación especial para flag: verificar que NO es un tag HTML
+            // IMPORTANTE: Este check debe estar ANTES de cualquier otro procesamiento
+            // El patrón flag (id>text]) puede coincidir falsamente con HTML como:
+            //   <b>texto] → matchea "b" como nodeId y ">texto]" como flag
+            // Debemos verificar que el carácter anterior al nodeId NO es '<'
+            // =====================================================================
+            if (shape.name === 'flag') {
+                // Si hay un '<' justo antes del nodeId, es un tag HTML, no un flag
+                if (start > 0 && line[start - 1] === '<') {
+                    continue; // Es HTML tag, no un nodo flag
+                }
+            }
+
             // =================================================================
             // FIX: Clases CSS mal ubicadas DENTRO del contenido de formas especiales
             // Ejemplo: ((":::res1 texto")) → (("texto")):::res1
@@ -1110,19 +1135,6 @@ const parseAndFixNodes = (line) => {
                     line[start + nodeId.length + 1] === '(' &&
                     line[start + nodeId.length + 2] === '(') {
                     continue; // Es double_circle, saltar
-                }
-            }
-
-            // =====================================================================
-            // Validación especial para flag: verificar que NO es un tag HTML
-            // El patrón flag (id>text]) puede coincidir falsamente con HTML como:
-            //   <b>texto] → matchea "b" como nodeId y ">texto]" como flag
-            // Debemos verificar que el carácter anterior al nodeId NO es '<'
-            // =====================================================================
-            if (shape.name === 'flag') {
-                // Si hay un '<' justo antes del nodeId, es un tag HTML, no un flag
-                if (start > 0 && line[start - 1] === '<') {
-                    continue; // Es HTML tag, no un nodo flag
                 }
             }
 

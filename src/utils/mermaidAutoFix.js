@@ -235,8 +235,10 @@ const hasProblematicQuotes = (content) => {
 const hasProblematicContent = (content) => {
     if (!content || content.trim() === '') return false;
 
+    const trimmed = content.trim();
+
     // Si está completamente entrecomillado, no hay problema
-    if (isFullyQuoted(content.trim())) {
+    if (isFullyQuoted(trimmed)) {
         return false;
     }
 
@@ -247,6 +249,18 @@ const hasProblematicContent = (content) => {
 
     // Verificar comillas internas problemáticas
     if (hasProblematicQuotes(content)) {
+        return true;
+    }
+
+    // Verificar guion al inicio (rompe nodos redondos como ((-75%)) )
+    if (trimmed.startsWith('-')) {
+        return true;
+    }
+
+    // Verificar caracteres especiales que pueden romper el parser
+    // % : Problemático en algunos contextos (ej: porcentajes)
+    // # : Puede interpretarse como ID o estilo
+    if (/[%#]/.test(content)) {
         return true;
     }
 
@@ -531,22 +545,22 @@ const fixSubgraphTitle = (line) => {
 const fixOrphanEnds = (lines) => {
     const fixes = [];
     let subgraphStack = 0; // Contador de subgraphs abiertos
-    
+
     const result = lines.map((line, index) => {
         const trimmed = line.trim().toLowerCase();
-        
+
         // Ignorar líneas vacías y comentarios
         if (!trimmed || trimmed.startsWith('%%')) {
             return line;
         }
-        
+
         // Contar apertura de subgraph
         // Soporta: "subgraph ID", "subgraph ID[title]", "subgraph ID [title]"
         if (/^subgraph\s/.test(trimmed) || trimmed === 'subgraph') {
             subgraphStack++;
             return line;
         }
-        
+
         // Detectar 'end' (solo la palabra, con posibles espacios)
         if (/^end\s*$/.test(trimmed)) {
             if (subgraphStack > 0) {
@@ -566,10 +580,10 @@ const fixOrphanEnds = (lines) => {
                 return `${indentation}%% ${line.trim()} %% Auto-fix: 'end' sin subgraph correspondiente`;
             }
         }
-        
+
         return line;
     });
-    
+
     return { lines: result, fixes };
 };
 
@@ -713,7 +727,7 @@ const fixMalformedEdgeLabels = (line) => {
     //   --o|--x|--|        - Más tipos de flechas
     //   <-->|o--|x--)      - Más tipos de flechas
     // ==========================================================================
-    
+
     const malformedWithNodePattern = /(-->|--o|--x|-\.->|==>|--|<-->|o--|x--)\s*\|([^|\]})]+)([\]\})])\s+(\w+)\s*([\[\(\{]|\(\(|\(\[|\[\[|\[\(|\{\{|\[\/|\[\\|>|-->|--o|--x|-\.->|==>|--|<-->|o--|x--)/g;
 
     let match;
@@ -725,7 +739,7 @@ const fixMalformedEdgeLabels = (line) => {
         const end = start + fullMatch.length;
 
         // Verificar que no estamos procesando un rango ya corregido
-        const overlaps = processedRanges.some(r => 
+        const overlaps = processedRanges.some(r =>
             (start >= r.start && start < r.end) || (end > r.start && end <= r.end)
         );
         if (overlaps) continue;
@@ -736,7 +750,7 @@ const fixMalformedEdgeLabels = (line) => {
         // y NO debe corregirse.
         // =======================================================================
         const trimmedContent = labelContent.trim();
-        
+
         // Si el contenido empieza con comilla, verificar si el ] está dentro de las comillas
         if (trimmedContent.startsWith('"') || trimmedContent.startsWith("'")) {
             // Analizar si las comillas están balanceadas
@@ -762,7 +776,7 @@ const fixMalformedEdgeLabels = (line) => {
         // explícito, como en "A -->|text] B -->"), debemos preservar el espacio
         // antes de la flecha pero no "pegar" el nodeDelim al ID.
         const isNextArrow = /^(-->|--o|--x|-\.->|==>|--|<-->|o--|x--)/.test(nodeDelim);
-        const correctedMatch = isNextArrow 
+        const correctedMatch = isNextArrow
             ? `${arrow}|${labelContent}| ${nextNodeId} ${nodeDelim}`
             : `${arrow}|${labelContent}| ${nextNodeId}${nodeDelim}`;
 
@@ -788,7 +802,7 @@ const fixMalformedEdgeLabels = (line) => {
     // 1. La línea NO continúa con más contenido significativo
     // 2. O continúa con un comentario %%
     // ==========================================================================
-    
+
     const malformedAtEndPattern = /(-->|--o|--x|-\.->|==>|--|<-->|o--|x--)\s*\|([^|\]})]+)([\]\})])(\s*(?:%%.*)?$)/g;
 
     while ((match = malformedAtEndPattern.exec(line)) !== null) {
@@ -797,7 +811,7 @@ const fixMalformedEdgeLabels = (line) => {
         const end = start + fullMatch.length;
 
         // Verificar solapamiento con fixes anteriores
-        const overlaps = processedRanges.some(r => 
+        const overlaps = processedRanges.some(r =>
             (start >= r.start && start < r.end) || (end > r.start && end <= r.end)
         );
         if (overlaps) continue;
@@ -1813,16 +1827,16 @@ export const analyzeCode = (code) => {
     let subgraphStack = 0;
     lines.forEach((line, index) => {
         const trimmed = line.trim().toLowerCase();
-        
+
         // Ignorar comentarios (incluidos los auto-fix previos)
         if (trimmed.startsWith('%%')) return;
-        
+
         // Contar apertura de subgraph
         if (/^subgraph\s/.test(trimmed) || trimmed === 'subgraph') {
             subgraphStack++;
             return;
         }
-        
+
         // Detectar 'end'
         if (/^end\s*$/.test(trimmed)) {
             if (subgraphStack > 0) {

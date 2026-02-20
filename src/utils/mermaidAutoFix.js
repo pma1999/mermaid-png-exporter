@@ -1,5 +1,5 @@
 /**
- * Sistema de Auto-corrección de código Mermaid v2.7
+ * Sistema de Auto-corrección de código Mermaid v2.8
  * 
  * PRINCIPIO FUNDAMENTAL: "First, do no harm"
  * - Solo modificar nodos que CLARAMENTE tienen problemas
@@ -20,6 +20,9 @@
  * v2.7 - Fix para clases CSS mal ubicadas dentro del contenido del nodo:
  *        [":::className texto"] → ["texto"]:::className
  *        Detecta :::clase al inicio del contenido y la mueve fuera del nodo
+ * v2.8 - Fix para flechas incompletas antes del pipe del edge label:
+ *        -.|"label"| → -.->|"label"|, --|"label"| → -->|"label"|, ==|"label"| → ==>|"label"|
+ *        Detecta y corrige cuando falta parte de la flecha antes del pipe del label
  */
 
 // =============================================================================
@@ -666,6 +669,234 @@ const fixInvalidTrailingSyntax = (line) => {
         wasModified,
         original: allOriginal.join(', '),
         removed: allRemoved.join(', ')
+    };
+};
+
+// =============================================================================
+// FIX PARA FLECHAS INCOMPLETAS EN EDGE LABELS
+// =============================================================================
+
+/**
+ * Detecta y corrige flechas incompletas antes del pipe del edge label.
+ * 
+ * Este es un error común donde el usuario escribe una flecha incompleta
+ * seguida directamente de | para el edge label.
+ * 
+ * Casos detectados:
+ *   A -.|"label"| B   →  A -.->|"label"| B   (-.| debería ser -.->)
+ *   A --|"label"| B   →  A -->|"label"| B   (--| debería ser -->)
+ *   A ==|"label"| B   →  A ==>|"label"| B   (==| debería ser ==>)
+ * 
+ * Estrategia de detección SEGURA:
+ * Solo corregimos cuando el patrón es inequívoco:
+ *   NODO FLECHA_INCOMPLETA | contenido | NODO
+ * 
+ * Donde:
+ *   - FLECHA_INCOMPLETA: -.|, --|, ==| (flechas incompletas)
+ *   - contenido: el label del edge (puede estar entrecomillado)
+ *   - NODO: un nodo válido después del label (confirma que es un edge)
+ * 
+ * IMPORTANTE: No modificamos flechas válidas como --o|, --x|, o--|, x--|
+ * 
+ * @param {string} line - Línea a procesar
+ * @returns {{fixed: string, fixes: Array<{original: string, fixed: string, incompleteArrow: string}>}}
+ */
+const fixIncompleteEdgeArrows = (line) => {
+    const fixes = [];
+
+    // ==========================================================================
+    // PATRÓN PRINCIPAL: Flecha incompleta seguida de edge label y nodo
+    // ==========================================================================
+    // Regex explicación:
+    // (-\\.|--|==)        - Grupo 1: Flecha incompleta (-.|, --|, ==|)
+    // \\s*                - Espacios opcionales
+    // \\|                 - Pipe de apertura del label (literal)
+    // ([^|]+)             - Grupo 2: Contenido del label (sin pipes)
+    // \\|                 - Pipe de cierre del label
+    // \\s+                - Al menos un espacio (separador obligatorio antes del nodo)
+    // (\\w+)              - Grupo 3: ID del siguiente nodo
+    // \\s*                - Espacios opcionales
+    // ([\\[\\(\\{]|       - Grupo 4: Delimitador de apertura del nodo O flecha:
+    //   \\(\\||\\(\\[|      - Formas especiales: ((, ([
+    //   \\[\\[|\\[\\(|      - Formas especiales: [[, [(
+    //   \\{\\{|              - Forma especial: {{
+    //   \\[\\/|\\[\\\\|      - Formas especiales: [/, [\\
+    //   >|                   - Forma flag: >
+    //   -->|-.->|==>|        - Flechas (para nodos sin delimitador seguidos de otra conexión)
+    //   --o|--x|--|          - Más tipos de flechas
+    //   <-->|o--|x--)        - Más tipos de flechas
+    // ==========================================================================
+
+    // Patrón mejorado que maneja nodos con y sin delimitador explícito
+    // Captura: flecha_incompleta | contenido | ID_nodo [delimitador_opcional]
+    const incompleteArrowPattern = /(-\.|--|==)\s*\|([^|]+)\|\s+(\w+)(\s*([\[\(\{]|\(\(|\(\[|\[\[|\[\(|\{\{|\[\/|\[\\|>|-->|--o|--x|-\.->|==>|--|<-->|o--|x--))?(\s|$|%%)/g;
+
+    let match;
+    const processedRanges = []; // Para evitar solapamientos
+
+    while ((match = incompleteArrowPattern.exec(line)) !== null) {
+        const [fullMatch, incompleteArrow, labelContent, nextNodeId, optionalSpaceAndDelim, nodeDelim] = match;
+        const start = match.index;
+        const end = start + fullMatch.length;
+
+        // Verificar que no estamos procesando un rango ya corregido
+        const overlaps = processedRanges.some(r =>
+            (start >= r.start && start < r.end) || (end > r.start && end <= r.end)
+        );
+        if (overlaps) continue;
+
+        // =======================================================================
+        // VALIDACIÓN DE SEGURIDAD: Verificar que NO es una flecha válida
+        // No debemos corregir casos como:
+        //   - --o| (flecha válida con círculo)
+        //   - --x| (flecha válida con cruz)
+        //   - o--| (flecha válida al revés)
+        //   - x--| (flecha válida al revés)
+        // =======================================================================
+        
+        // Verificar el contexto antes de la flecha incompleta
+        const beforeArrow = line.substring(Math.max(0, start - 10), start);
+        
+        // Si hay 'o' o 'x' justo antes de --, podría ser parte de una flecha válida
+        // Pero nuestro patrón ya captura solo -.|, --|, ==|, así que estamos seguros
+        
+        // =======================================================================
+        // DETERMINAR LA CORRECCIÓN SEGÚN EL TIPO DE FLECHA INCOMPLETA
+        // =======================================================================
+        let completeArrow;
+        if (incompleteArrow === '-.') {
+            completeArrow = '-.->';
+        } else if (incompleteArrow === '--') {
+            completeArrow = '-->';
+        } else if (incompleteArrow === '==') {
+            completeArrow = '==>';
+        } else {
+            // No debería llegar aquí, pero por seguridad continuamos
+            continue;
+        }
+
+        // =======================================================================
+        // CONSTRUIR LA CORRECCIÓN
+        // =======================================================================
+        // Reemplazar la flecha incompleta por la completa
+        // Mantener todo lo demás igual (label y nodo)
+        
+        // NOTA: Si nodeDelim es una flecha (el nodo siguiente no tiene delimitador
+        // explícito, como en "A --|text| B -->"), debemos preservar el espacio
+        // antes de la flecha pero no "pegar" el nodeDelim al ID.
+        // Si nodeDelim está vacío o undefined, el nodo no tiene delimitador explícito
+        const actualNodeDelim = (nodeDelim || '').trim();
+        const isNextArrow = actualNodeDelim && /^(-->|--o|--x|-\.->|==>|--|<-->|o--|x--)/.test(actualNodeDelim);
+        
+        // Construir la corrección preservando el formato original
+        let correctedMatch;
+        if (isNextArrow) {
+            // Nodo seguido de flecha: preservar espacio antes de la flecha
+            correctedMatch = `${completeArrow}|${labelContent}| ${nextNodeId} ${actualNodeDelim}`;
+        } else if (actualNodeDelim) {
+            // Nodo con delimitador explícito: pegar el delimitador al ID
+            correctedMatch = `${completeArrow}|${labelContent}| ${nextNodeId}${actualNodeDelim}`;
+        } else {
+            // Nodo sin delimitador: solo el ID
+            correctedMatch = `${completeArrow}|${labelContent}| ${nextNodeId}`;
+        }
+
+        fixes.push({
+            original: fullMatch,
+            fixed: correctedMatch,
+            incompleteArrow: incompleteArrow,
+            completeArrow: completeArrow,
+            start: start,
+            end: end,
+            type: 'incomplete_edge_arrow'
+        });
+
+        processedRanges.push({ start, end });
+    }
+
+    // ==========================================================================
+    // PATRÓN SECUNDARIO: Flecha incompleta al final de línea (sin nodo después)
+    // ==========================================================================
+    // Menos común pero también es un error claro.
+    // Patrón: flecha_incompleta|contenido| al final de línea o antes de comentario
+    // 
+    // IMPORTANTE: Este patrón es más arriesgado, solo lo aplicamos si:
+    // 1. La línea NO continúa con más contenido significativo
+    // 2. O continúa con un comentario %%
+    // ==========================================================================
+
+    const incompleteArrowAtEndPattern = /(-\.|--|==)\s*\|([^|]+)\|(\s*(?:%%.*)?$)/g;
+
+    while ((match = incompleteArrowAtEndPattern.exec(line)) !== null) {
+        const [fullMatch, incompleteArrow, labelContent, trailing] = match;
+        const start = match.index;
+        const end = start + fullMatch.length;
+
+        // Verificar solapamiento con fixes anteriores
+        const overlaps = processedRanges.some(r =>
+            (start >= r.start && start < r.end) || (end > r.start && end <= r.end)
+        );
+        if (overlaps) continue;
+
+        // Para este patrón, necesitamos que el contenido tenga algo sustancial
+        // (evitar falsos positivos con líneas parciales o comentarios)
+        if (labelContent.trim().length < 1) continue;
+
+        // Determinar la corrección según el tipo de flecha incompleta
+        let completeArrow;
+        if (incompleteArrow === '-.') {
+            completeArrow = '-.->';
+        } else if (incompleteArrow === '--') {
+            completeArrow = '-->';
+        } else if (incompleteArrow === '==') {
+            completeArrow = '==>';
+        } else {
+            continue;
+        }
+
+        const correctedMatch = `${completeArrow}|${labelContent}|${trailing}`;
+
+        fixes.push({
+            original: fullMatch,
+            fixed: correctedMatch,
+            incompleteArrow: incompleteArrow,
+            completeArrow: completeArrow,
+            start: start,
+            end: end,
+            type: 'incomplete_edge_arrow_at_end'
+        });
+
+        processedRanges.push({ start, end });
+    }
+
+    // ==========================================================================
+    // APLICAR FIXES de derecha a izquierda
+    // ==========================================================================
+    let result = line;
+    const sortedFixes = [...fixes].sort((a, b) => b.start - a.start);
+
+    for (const fix of sortedFixes) {
+        result = result.slice(0, fix.start) + fix.fixed + result.slice(fix.end);
+    }
+
+    // ==========================================================================
+    // ITERACIÓN: Si hubo cambios, ejecutar de nuevo para capturar casos
+    // que no se detectaron en la primera pasada (cuando un fix consume
+    // parte del string que otro fix necesitaba)
+    // ==========================================================================
+    if (fixes.length > 0) {
+        const secondPass = fixIncompleteEdgeArrows(result);
+        if (secondPass.fixes.length > 0) {
+            return {
+                fixed: secondPass.fixed,
+                fixes: [...fixes, ...secondPass.fixes]
+            };
+        }
+    }
+
+    return {
+        fixed: result,
+        fixes: fixes
     };
 };
 
@@ -1721,6 +1952,23 @@ export const autoFixMermaidCode = (code) => {
             currentLine = trailingResult.fixed;
         }
 
+        // FIX ESPECIAL: Flechas incompletas antes del pipe del edge label
+        // Patrones como -.|"label"| en lugar de -.->|"label"| (falta parte de la flecha)
+        // DEBE ejecutarse ANTES de fixMalformedEdgeLabels para corregir la estructura primero
+        const incompleteArrowResult = fixIncompleteEdgeArrows(currentLine);
+
+        if (incompleteArrowResult.fixes.length > 0) {
+            incompleteArrowResult.fixes.forEach(fix => {
+                allFixes.push({
+                    line: index + 1,
+                    original: `incomplete arrow: ${fix.incompleteArrow} → ${fix.completeArrow}`,
+                    fixed: `edge arrow: ${fix.fixed}`,
+                    type: fix.type
+                });
+            });
+            currentLine = incompleteArrowResult.fixed;
+        }
+
         // FIX ESPECIAL: Edge labels con delimitadores INCORRECTOS
         // Patrones como -->|texto] en lugar de -->|texto| (] debería ser |)
         // DEBE ejecutarse ANTES de fixEdgeLabels para corregir la estructura primero
@@ -1904,6 +2152,19 @@ export const analyzeCode = (code) => {
                 });
             }
             return;
+        }
+
+        // Detectar flechas incompletas antes del pipe del edge label
+        const incompleteArrowResult = fixIncompleteEdgeArrows(line);
+        if (incompleteArrowResult.fixes.length > 0) {
+            incompleteArrowResult.fixes.forEach(fix => {
+                issues.push({
+                    line: index + 1,
+                    type: 'incomplete_edge_arrow',
+                    content: fix.original,
+                    description: `Flecha incompleta '${fix.incompleteArrow}' debería ser '${fix.completeArrow}'`
+                });
+            });
         }
 
         // Detectar edge labels con delimitadores incorrectos (] } ) en lugar de |)

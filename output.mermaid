@@ -1,0 +1,49 @@
+flowchart TD
+    %% Definición de clases y código cromático
+    classDef root fill:#2d3436,stroke:#fff,stroke-width:2px,color:#fff,font-weight:bold,font-size:16px
+    classDef causa fill:#e17055,stroke:#fff,stroke-width:2px,color:#fff,font-weight:bold
+    classDef subCausa fill:#fab1a0,stroke:#d63031,stroke-width:2px,color:#2d3436
+    classDef geo fill:#0984e3,stroke:#fff,stroke-width:2px,color:#fff,font-weight:bold
+    classDef subGeo fill:#74b9ff,stroke:#0984e3,stroke-width:2px,color:#2d3436
+    classDef vulg fill:#00b894,stroke:#fff,stroke-width:2px,color:#fff,font-weight:bold,font-size:15px
+    classDef subVulg fill:#55efc4,stroke:#00b894,stroke-width:2px,color:#2d3436
+
+    %% Nodo Raíz
+    Title((ANTIGÜEDAD TARDÍA<br>Siglos IV - VII)):::root
+
+    %% Bloque 1: Causas
+    subgraph C [1. CAUSAS ESTRUCTURALES DEL COLAPSO JURÍDICO]
+        direction LR
+        Pol[Asfixia Imperial<br>El Dominado]:::causa --> Pol1(Monopolio normativo<br>del Emperador):::subCausa --> Pol2>Fin de creación<br>libre de juristas]:::subCausa
+        
+        Soc[Crisis Urbana<br>e Inseguridad]:::causa --> Soc1(Ruralización masiva<br>de la sociedad):::subCausa --> Soc2>Inaplicabilidad del<br>Ius Civile]:::subCausa
+    end
+
+    %% Bloque 2: Geopolítica
+    subgraph G [2. DIVERGENCIA GEOPOLÍTICA TEMPORAL]
+        direction LR
+        Occ[OCCIDENTE<br>Desmembramiento]:::geo --> Occ1(Reinos germanos<br>fragmentados):::subGeo --> Occ2(Simplificación precoz<br>Siglos IV - V):::subGeo
+        
+        Ori[ORIENTE<br>Imperio Continuo]:::geo --> Ori1(Esplendor efímero<br>con Justiniano):::subGeo --> Ori2(Crisis jurídica tardía<br>Post Siglo VI):::subGeo
+    end
+
+    %% Bloque 3: Consecuencia
+    subgraph V [3. METAMORFOSIS JURÍDICA]
+        direction TD
+        Vul{{VULGARIZACIÓN<br>DEL DERECHO}}:::vulg
+        V1(Adaptación de supervivencia<br>tipo 'aldea post-nuclear'):::subVulg
+        V2(Ciencia jurídica absorbida<br>por Artes Liberales):::subVulg
+        V3(Predominio absoluto<br>de la Costumbre local):::subVulg
+        
+        Vul --- V1
+        Vul --- V2
+        Vul --- V3
+    end
+
+    %% Conexiones Principales
+    Title --> C
+    Pol2 & Soc2 --> G
+    Occ2 & Ori2 --> Vul
+
+    %% Estilo de flechas
+    linkStyle default stroke:#636e72,stroke-width:3px

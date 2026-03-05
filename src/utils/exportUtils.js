@@ -115,7 +115,39 @@ export const exportSvgToPng = async (svgElement, { scale = 3, transparent = fals
     .messageText { font-size: 13px; }
     .actor { stroke: #333; fill: #eee; }
     .actor-line { stroke: #333; }
+
+    /* Normalize foreignObject layout for consistent PNG export (fixes text alignment shift) */
     foreignObject { overflow: visible; }
+    foreignObject, foreignObject * {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+      font-size: 14px !important;
+    }
+    foreignObject > div,
+    .nodeLabel foreignObject div,
+    .node foreignObject div,
+    .edgeLabel foreignObject div,
+    .cluster-label foreignObject div,
+    foreignObject div[style] {
+      margin: 0 !important;
+      padding: 4px 6px !important;
+      line-height: 1.3 !important;
+      box-sizing: border-box !important;
+      display: flex !important;
+      flex-direction: column !important;
+      justify-content: center !important;
+      align-content: center !important;
+      align-items: center !important;
+      text-align: center !important;
+      vertical-align: top !important;
+    }
+    /* Remove all margins from nested elements (fixes nodes like FICCIONES with multi-line content) */
+    foreignObject div *,
+    foreignObject div * * {
+      margin: 0 !important;
+      margin-top: 0 !important;
+      padding-top: 0 !important;
+      vertical-align: top !important;
+    }
   `;
     clonedSvg.insertBefore(styleElement, clonedSvg.firstChild);
 

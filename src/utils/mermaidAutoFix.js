@@ -270,6 +270,99 @@ const hasProblematicContent = (content) => {
     return false;
 };
 
+/**
+ * Versión estricta de hasProblematicContent para formas que requieren validación extra.
+ * 
+ * Además de todas las comprobaciones estándar, detecta:
+ * - Caracteres no-ASCII / acentuados (ej: Í, Á, É, Ú, Ñ, Ü).
+ *   El lexer de Mermaid 10.x emite un token 'NODE_STRING' inesperado cuando
+ *   encuentra un carácter fuera del rango ASCII dentro de hexágonos {{...}}.
+ *   IMPORTANTE: Las comillas dobles tampoco funcionan como solución en hexágonos
+ *   (también producen NODE_STRING error en Mermaid 10.x).
+ *   La corrección correcta es la normalización NFD: ver normalizeForHexagon().
+ * 
+ * Se aplica SOLO a formas que son conocidas por ser más estrictas con su contenido
+ * (principalmente hexágonos {{...}}).
+ * NO se aplica globalmente para respetar el principio "First, do no harm":
+ * los nodos [...]  y (...) ya manejan correctamente caracteres especiales.
+ * 
+ * @param {string} content - El contenido a analizar
+ * @returns {boolean}
+ */
+const hasStrictProblematicContent = (content) => {
+    if (!content || content.trim() === '') return false;
+
+    // First run the standard checks
+    if (hasProblematicContent(content)) return true;
+
+    const trimmed = content.trim();
+
+    // If already fully quoted, no problem
+    if (isFullyQuoted(trimmed)) return false;
+
+    // Detect HTML tags (e.g., <br>, <b>, </b>, <br/>, <i>).
+    // Unlike [...]  and (...) nodes, the Mermaid 10.x {{...}} hexagon lexer
+    // does NOT accept HTML markup and produces a 'NODE_STRING' parse error.
+    if (/<[a-zA-Z\/!]/.test(content)) return true;
+
+    // Detect non-ASCII characters (accented letters, Unicode symbols, etc.)
+    // Examples: Í (\u00CD), Á (\u00C1), É (\u00C9), Ñ (\u00D1), ü (\u00FC)
+    // The Mermaid 10.x lexer emits 'NODE_STRING' unexpectedly when it encounters
+    // these characters unquoted inside hexagon nodes {{...}}.
+    // eslint-disable-next-line no-control-regex
+    if (/[^\x00-\x7F]/.test(content)) return true;
+
+    return false;
+};
+
+/**
+ * Normaliza el contenido de un nodo hexágono {{...}} para compatibilidad con
+ * el parser de Mermaid 10.x, que no acepta caracteres no-ASCII sin comillas,
+ * y tampoco acepta comillas dobles como delimitadores de contenido en {{...}}.
+ * 
+ * Estrategia: descomponer caracteres acentuados mediante NFD y eliminar las
+ * marcas diacríticas combinantes, convirtiendo a ASCII base:
+ *   Í → I, Á → A, É → E, Ó → O, Ú → U, Ñ → N, ü → u, etc.
+ * 
+ * Las etiquetas HTML (ej: <br>) son caracteres ASCII y se dejan intactas,
+ * ya que Mermaid con htmlLabels:true las renderiza correctamente.
+ * 
+ * @param {string} content - Contenido del nodo hexágono
+ * @returns {string} - Contenido normalizado, seguro para el parser de Mermaid
+ */
+const normalizeForHexagon = (content) => {
+    // Mermaid 10.x {{...}} hexagon nodes have a strict lexer that breaks on:
+    //
+    // 1. Non-ASCII / accented characters (e.g., Í, Á, É, Ñ)
+    //    The lexer emits an unexpected NODE_STRING token at the non-ASCII byte.
+    //    Fix: NFD decomposition strips diacritical marks → pure ASCII base letter.
+    //
+    // 2. HTML tags (e.g., <br>, <b>)
+    //    The '<' character is a special token in the flowchart lexer.
+    //    Fix: replace <br> with a space; strip other tags entirely.
+    //
+    // 3. Multiple words (spaces between words)
+    //    Each word is a separate NODE_STRING token; the grammar expects only one.
+    //    Fix: wrap the entire normalized content in double quotes so the parser
+    //    sees a single quoted-string token (valid in {{...}} when ASCII-only).
+    //
+    // ORDER MATTERS: normalize first, then quote. Previous attempts failed because
+    // non-ASCII was still present inside the quoted string, breaking the lexer
+    // at the non-ASCII byte even inside quotes.
+    const normalized = content
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')     // Strip diacritical marks: Í→I, Á→A, etc.
+        .replace(/<br\s*\/?>/gi, ' ')         // Replace <br> with a readable space
+        .replace(/<[^>]*>/g, '')              // Strip any other HTML tags
+        .replace(/\s+/g, ' ')                 // Collapse multiple spaces
+        .trim();
+
+    // Wrap in double quotes so multi-word content is one token.
+    // At this point, 'normalized' is guaranteed to be pure ASCII with no HTML,
+    // so the quoted form {"content"}} will parse correctly in Mermaid 10.x.
+    return `"${normalized}"`;
+};
+
 // =============================================================================
 // FUNCIONES DE CORRECCIÓN
 // =============================================================================
@@ -753,13 +846,13 @@ const fixIncompleteEdgeArrows = (line) => {
         //   - o--| (flecha válida al revés)
         //   - x--| (flecha válida al revés)
         // =======================================================================
-        
+
         // Verificar el contexto antes de la flecha incompleta
         const beforeArrow = line.substring(Math.max(0, start - 10), start);
-        
+
         // Si hay 'o' o 'x' justo antes de --, podría ser parte de una flecha válida
         // Pero nuestro patrón ya captura solo -.|, --|, ==|, así que estamos seguros
-        
+
         // =======================================================================
         // DETERMINAR LA CORRECCIÓN SEGÚN EL TIPO DE FLECHA INCOMPLETA
         // =======================================================================
@@ -780,14 +873,14 @@ const fixIncompleteEdgeArrows = (line) => {
         // =======================================================================
         // Reemplazar la flecha incompleta por la completa
         // Mantener todo lo demás igual (label y nodo)
-        
+
         // NOTA: Si nodeDelim es una flecha (el nodo siguiente no tiene delimitador
         // explícito, como en "A --|text| B -->"), debemos preservar el espacio
         // antes de la flecha pero no "pegar" el nodeDelim al ID.
         // Si nodeDelim está vacío o undefined, el nodo no tiene delimitador explícito
         const actualNodeDelim = (nodeDelim || '').trim();
         const isNextArrow = actualNodeDelim && /^(-->|--o|--x|-\.->|==>|--|<-->|o--|x--)/.test(actualNodeDelim);
-        
+
         // Construir la corrección preservando el formato original
         let correctedMatch;
         if (isNextArrow) {
@@ -1421,9 +1514,25 @@ const parseAndFixNodes = (line) => {
                 }
             }
 
-            // Solo procesar si tiene contenido problemático (paréntesis o comillas) Y no está entrecomillado
-            if (hasProblematicContent(content)) {
-                const fixed = fixSpecialNode(nodeId, content, openDelim, closeDelim, modifier || '');
+            // Solo procesar si tiene contenido problemático.
+            // Para hexágonos ({{...}}) se usa la versión estricta que además detecta
+            // caracteres no-ASCII y etiquetas HTML, los cuales rompen el lexer de
+            // Mermaid en este tipo de nodo pero son válidos en nodos [...]  y (...).
+            const contentNeedsQuoting = shape.name === 'hexagon'
+                ? hasStrictProblematicContent(content)
+                : hasProblematicContent(content);
+
+            if (contentNeedsQuoting) {
+                // IMPORTANT: For hexagon nodes we CANNOT use safeQuote / fixSpecialNode:
+                // Mermaid 10.x rejects both non-ASCII chars AND double-quoted strings
+                // inside {{...}}, both producing a 'NODE_STRING' parse error.
+                // The correct fix is NFD normalization: strip diacritical marks so that
+                // accented characters like Í→I, Á→A, É→E are converted to safe ASCII.
+                // HTML tags like <br> are ASCII and are left untouched by this step.
+                const normalizedContent = shape.name === 'hexagon'
+                    ? normalizeForHexagon(content)
+                    : safeQuote(content);
+                const fixed = `${nodeId}${openDelim}${normalizedContent}${closeDelim}${modifier || ''}`;
                 if (fixed !== fullMatch) {
                     fixes.push({
                         original: fullMatch,

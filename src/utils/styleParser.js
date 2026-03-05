@@ -932,6 +932,9 @@ export const parseAllNodes = (code) => {
         /^\s*direction\s+/,                 // direction statements
         /^\s*linkStyle\s+/,                 // linkStyle
         /^\s*(graph|flowchart)\s+/,         // diagram type declaration
+        // Skip continuation lines inside multi-line node labels (fixes phantom nodes)
+        // Lines starting with bullet/dash: "• Constituye (Estructura)"
+        /^\s*[•\-]\s+\w/,
     ];
 
     // Node shape patterns - captures: nodeId, label content, optional :::class
@@ -973,7 +976,6 @@ export const parseAllNodes = (code) => {
     lines.forEach((line, index) => {
         // Skip non-node lines
         if (skipPatterns.some(pattern => pattern.test(line))) return;
-        
         // Try each node pattern
         for (const pattern of nodePatterns) {
             pattern.lastIndex = 0; // Reset regex
@@ -986,6 +988,12 @@ export const parseAllNodes = (code) => {
                 
                 // Skip if this is a reserved word or looks like a keyword
                 if (['graph', 'flowchart', 'subgraph', 'end', 'classDef', 'class', 'style', 'direction'].includes(nodeId)) {
+                    continue;
+                }
+                // Skip false positives: label content parsed as node (fixes phantom nodes)
+                // Lines with 8+ spaces are inside subgraphs; "Word (paren)" there is usually label text.
+                // Real node IDs: OJ1, TE1, PS1 (have digits) or ESTADO, G1 (short/caps). False: Constituye, Ciudadanos, Mar.
+                if (line.match(/^\s{8,}/) && !/\d/.test(nodeId) && (nodeId.length > 4 || line.includes('•'))) {
                     continue;
                 }
                 
@@ -1859,7 +1867,7 @@ export const analyzeAllStyles = (code) => {
     // These use Mermaid default colors which may have visibility issues
     // =========================================================================
     const unstyledNodes = findUnstyledNodes(code);
-    
+
     unstyledNodes.forEach((node) => {
         results.push({
             id: node.id,
